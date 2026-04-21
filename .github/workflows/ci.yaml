@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: wdwfleet
+          POSTGRES_PASSWORD: wdwfleet
+          POSTGRES_DB: wdwfleet
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U wdwfleet"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Lint
+        uses: golangci-lint/golangci-lint-action@v7
+        with:
+          version: latest
+
+      - name: Test
+        run: go test -race -coverprofile=coverage.out ./...
+        env:
+          WDW_DATABASE_URL: postgres://wdwfleet:wdwfleet@localhost:5432/wdwfleet?sslmode=disable
+
+      - name: Build
+        run: go build -o /dev/null ./cmd/wdw-fleet

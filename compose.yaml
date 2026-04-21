@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: wdwfleet
+      POSTGRES_PASSWORD: wdwfleet
+      POSTGRES_DB: wdwfleet
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  wdw-fleet:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      WDW_DATABASE_URL: postgres://wdwfleet:wdwfleet@postgres:5432/wdwfleet?sslmode=disable
+      WDW_LISTEN_ADDR: ":8080"
+    depends_on:
+      - postgres
+
+volumes:
+  pgdata:

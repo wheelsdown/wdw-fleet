@@ -1,0 +1,1998 @@
+openapi: 3.1.0
+info:
+  title: WDW Fleet Manager API
+  version: 1.0.0
+  description: |
+    API-first vehicle fleet management service by Wheels Down Workshop.
+
+    Tracks vehicles, fuel logs, service records, expenses, reminders, and parts
+    for small-to-medium fleets. All monetary values are integers in the smallest
+    currency unit (e.g. cents for USD). The active currency is a fleet-wide
+    configuration setting.
+
+    Fuel economy is never stored directly — it is computed from odometer readings,
+    fuel volume, and fill-type flags. Partial fills and missed fills are handled
+    automatically so averages remain accurate.
+
+    All list endpoints use cursor-based pagination. Pass `cursor` (opaque string
+    from a previous response) and `limit` to page through results. Responses
+    include `next_cursor`; a null value means you have reached the end.
+  contact:
+    name: Wheels Down Workshop
+    url: https://wheelsdownworkshop.com
+  license:
+    name: Proprietary
+    url: https://wheelsdownworkshop.com/license
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development
+  - url: https://api.wheelsdownworkshop.com/api/v1
+    description: Production
+
+tags:
+  - name: health
+    description: Service health
+  - name: vehicles
+    description: Vehicle CRUD and timeline
+  - name: fuel-logs
+    description: Fuel log CRUD
+  - name: service-records
+    description: Service record CRUD
+  - name: expenses
+    description: Expense CRUD
+  - name: reminders
+    description: Reminder CRUD and cron evaluation
+  - name: parts
+    description: Part CRUD
+  - name: webhooks
+    description: Webhook subscription management
+  - name: stats
+    description: Fleet-level statistics
+
+paths:
+  # ---------- Health ----------
+  /healthz:
+    get:
+      operationId: healthCheck
+      summary: Service health check
+      description: Returns 200 when the service and its dependencies are healthy.
+      tags: [health]
+      security: []
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: Unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  # ---------- Vehicles ----------
+  /vehicles:
+    get:
+      operationId: listVehicles
+      summary: List vehicles
+      tags: [vehicles]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/VehicleStatus"
+      responses:
+        "200":
+          description: Paginated list of vehicles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VehicleList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createVehicle
+      summary: Create a vehicle
+      tags: [vehicles]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VehicleCreate"
+      responses:
+        "201":
+          description: Vehicle created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vehicle"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /vehicles/{vehicleId}:
+    parameters:
+      - $ref: "#/components/parameters/VehicleId"
+    get:
+      operationId: getVehicle
+      summary: Get a vehicle
+      tags: [vehicles]
+      responses:
+        "200":
+          description: Vehicle details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vehicle"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateVehicle
+      summary: Update a vehicle
+      tags: [vehicles]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VehicleUpdate"
+      responses:
+        "200":
+          description: Vehicle updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vehicle"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+    delete:
+      operationId: deleteVehicle
+      summary: Delete a vehicle
+      tags: [vehicles]
+      responses:
+        "204":
+          description: Vehicle deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /vehicles/{vehicleId}/timeline:
+    parameters:
+      - $ref: "#/components/parameters/VehicleId"
+    get:
+      operationId: getVehicleTimeline
+      summary: Unified chronological timeline
+      description: |
+        Returns a merged, reverse-chronological feed of all events for a
+        vehicle: fuel logs, service records, expenses, and reminder state
+        changes. Each entry carries a `type` discriminator.
+      tags: [vehicles]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Paginated timeline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimelineList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------- Fuel Logs ----------
+  /vehicles/{vehicleId}/fuel-logs:
+    parameters:
+      - $ref: "#/components/parameters/VehicleId"
+    get:
+      operationId: listFuelLogs
+      summary: List fuel logs for a vehicle
+      tags: [fuel-logs]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Paginated fuel logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FuelLogList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createFuelLog
+      summary: Record a fuel fill
+      tags: [fuel-logs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FuelLogCreate"
+      responses:
+        "201":
+          description: Fuel log created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FuelLog"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /fuel-logs/{fuelLogId}:
+    parameters:
+      - $ref: "#/components/parameters/FuelLogId"
+    get:
+      operationId: getFuelLog
+      summary: Get a fuel log
+      tags: [fuel-logs]
+      responses:
+        "200":
+          description: Fuel log details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FuelLog"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateFuelLog
+      summary: Update a fuel log
+      tags: [fuel-logs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FuelLogUpdate"
+      responses:
+        "200":
+          description: Fuel log updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FuelLog"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+    delete:
+      operationId: deleteFuelLog
+      summary: Delete a fuel log
+      tags: [fuel-logs]
+      responses:
+        "204":
+          description: Fuel log deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------- Service Records ----------
+  /vehicles/{vehicleId}/service-records:
+    parameters:
+      - $ref: "#/components/parameters/VehicleId"
+    get:
+      operationId: listServiceRecords
+      summary: List service records for a vehicle
+      tags: [service-records]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Paginated service records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceRecordList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createServiceRecord
+      summary: Create a service record
+      tags: [service-records]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServiceRecordCreate"
+      responses:
+        "201":
+          description: Service record created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceRecord"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /service-records/{serviceRecordId}:
+    parameters:
+      - $ref: "#/components/parameters/ServiceRecordId"
+    get:
+      operationId: getServiceRecord
+      summary: Get a service record
+      tags: [service-records]
+      responses:
+        "200":
+          description: Service record details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceRecord"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateServiceRecord
+      summary: Update a service record
+      tags: [service-records]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServiceRecordUpdate"
+      responses:
+        "200":
+          description: Service record updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceRecord"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+    delete:
+      operationId: deleteServiceRecord
+      summary: Delete a service record
+      tags: [service-records]
+      responses:
+        "204":
+          description: Service record deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------- Expenses ----------
+  /vehicles/{vehicleId}/expenses:
+    parameters:
+      - $ref: "#/components/parameters/VehicleId"
+    get:
+      operationId: listExpenses
+      summary: List expenses for a vehicle
+      tags: [expenses]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: category
+          in: query
+          schema:
+            $ref: "#/components/schemas/ExpenseCategory"
+      responses:
+        "200":
+          description: Paginated expenses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExpenseList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createExpense
+      summary: Create an expense
+      tags: [expenses]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpenseCreate"
+      responses:
+        "201":
+          description: Expense created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /expenses/{expenseId}:
+    parameters:
+      - $ref: "#/components/parameters/ExpenseId"
+    get:
+      operationId: getExpense
+      summary: Get an expense
+      tags: [expenses]
+      responses:
+        "200":
+          description: Expense details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateExpense
+      summary: Update an expense
+      tags: [expenses]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpenseUpdate"
+      responses:
+        "200":
+          description: Expense updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+    delete:
+      operationId: deleteExpense
+      summary: Delete an expense
+      tags: [expenses]
+      responses:
+        "204":
+          description: Expense deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------- Reminders ----------
+  /vehicles/{vehicleId}/reminders:
+    parameters:
+      - $ref: "#/components/parameters/VehicleId"
+    get:
+      operationId: listReminders
+      summary: List reminders for a vehicle
+      tags: [reminders]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ReminderStatus"
+      responses:
+        "200":
+          description: Paginated reminders
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createReminder
+      summary: Create a reminder
+      tags: [reminders]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReminderCreate"
+      responses:
+        "201":
+          description: Reminder created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reminder"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /reminders/{reminderId}:
+    parameters:
+      - $ref: "#/components/parameters/ReminderId"
+    get:
+      operationId: getReminder
+      summary: Get a reminder
+      tags: [reminders]
+      responses:
+        "200":
+          description: Reminder details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reminder"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateReminder
+      summary: Update a reminder
+      tags: [reminders]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReminderUpdate"
+      responses:
+        "200":
+          description: Reminder updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reminder"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+    delete:
+      operationId: deleteReminder
+      summary: Delete a reminder
+      tags: [reminders]
+      responses:
+        "204":
+          description: Reminder deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /reminders/check:
+    post:
+      operationId: checkReminders
+      summary: Evaluate all pending reminders
+      description: |
+        Intended to be called by a cron job. Evaluates every pending reminder
+        against current date and vehicle odometer readings. Any reminder that
+        has become overdue is transitioned to the `overdue` status and a
+        `reminder.overdue` webhook is fired for each.
+      tags: [reminders]
+      responses:
+        "200":
+          description: Check results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderCheckResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ---------- Parts ----------
+  /parts:
+    get:
+      operationId: listParts
+      summary: List parts
+      tags: [parts]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: search
+          in: query
+          description: Free-text search across name, part number, and manufacturer.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Paginated parts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createPart
+      summary: Create a part
+      tags: [parts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PartCreate"
+      responses:
+        "201":
+          description: Part created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Part"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /parts/{partId}:
+    parameters:
+      - $ref: "#/components/parameters/PartId"
+    get:
+      operationId: getPart
+      summary: Get a part
+      tags: [parts]
+      responses:
+        "200":
+          description: Part details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Part"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updatePart
+      summary: Update a part
+      tags: [parts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PartUpdate"
+      responses:
+        "200":
+          description: Part updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Part"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+    delete:
+      operationId: deletePart
+      summary: Delete a part
+      tags: [parts]
+      responses:
+        "204":
+          description: Part deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------- Webhooks ----------
+  /webhooks:
+    get:
+      operationId: listWebhooks
+      summary: List webhook subscriptions
+      tags: [webhooks]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Paginated webhooks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createWebhook
+      summary: Create a webhook subscription
+      tags: [webhooks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookCreate"
+      responses:
+        "201":
+          description: Webhook created. The response includes the signing secret exactly once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookWithSecret"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /webhooks/{webhookId}:
+    parameters:
+      - $ref: "#/components/parameters/WebhookId"
+    get:
+      operationId: getWebhook
+      summary: Get a webhook subscription
+      tags: [webhooks]
+      responses:
+        "200":
+          description: Webhook details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Webhook"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateWebhook
+      summary: Update a webhook subscription
+      tags: [webhooks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookUpdate"
+      responses:
+        "200":
+          description: Webhook updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Webhook"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+    delete:
+      operationId: deleteWebhook
+      summary: Delete a webhook subscription
+      tags: [webhooks]
+      responses:
+        "204":
+          description: Webhook deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------- Stats ----------
+  /stats:
+    get:
+      operationId: getFleetStats
+      summary: Fleet-level statistics
+      description: |
+        Returns aggregate statistics across the entire fleet: total vehicle
+        count (by status), total cost, and cost breakdown by expense category.
+        An optional date range can scope the cost calculations.
+      tags: [stats]
+      parameters:
+        - name: from
+          in: query
+          description: Inclusive start date (ISO 8601 date) for cost calculations.
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          description: Inclusive end date (ISO 8601 date) for cost calculations.
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Fleet statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FleetStats"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+# ============================================================
+# Components
+# ============================================================
+components:
+
+  # ---------- Security ----------
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: API key or JWT passed as a Bearer token.
+
+  # ---------- Parameters ----------
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      description: Opaque cursor from a previous response's `next_cursor`.
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      description: Maximum number of items to return.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 25
+    VehicleId:
+      name: vehicleId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    FuelLogId:
+      name: fuelLogId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ServiceRecordId:
+      name: serviceRecordId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ExpenseId:
+      name: expenseId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ReminderId:
+      name: reminderId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PartId:
+      name: partId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    WebhookId:
+      name: webhookId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  # ---------- Reusable responses ----------
+  responses:
+    BadRequest:
+      description: Invalid request syntax or parameters.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Missing or invalid authentication.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: Conflict — resource has dependent records.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    UnprocessableEntity:
+      description: Validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationError"
+
+  # ---------- Schemas ----------
+  schemas:
+
+    # -- Enums --
+    OdometerUnit:
+      type: string
+      enum: [mi, km]
+
+    VolumeUnit:
+      type: string
+      enum: [gal, L]
+
+    VehicleStatus:
+      type: string
+      enum: [active, inactive, sold]
+
+    ExpenseCategory:
+      type: string
+      enum:
+        - fuel
+        - maintenance
+        - insurance
+        - registration
+        - tax
+        - depreciation
+        - financing
+        - tolls
+        - parking
+        - other
+
+    ReminderType:
+      type: string
+      enum: [date, odometer, both]
+
+    ReminderStatus:
+      type: string
+      enum: [pending, overdue, dismissed, completed]
+
+    WebhookEvent:
+      type: string
+      description: Dot-notation event name.
+      enum:
+        - vehicle.created
+        - vehicle.updated
+        - vehicle.deleted
+        - fuel_log.created
+        - fuel_log.updated
+        - fuel_log.deleted
+        - service_record.created
+        - service_record.updated
+        - service_record.deleted
+        - expense.created
+        - expense.updated
+        - expense.deleted
+        - reminder.created
+        - reminder.updated
+        - reminder.deleted
+        - reminder.overdue
+        - reminder.completed
+        - part.created
+        - part.updated
+        - part.deleted
+
+    TimelineEventType:
+      type: string
+      enum: [fuel_log, service_record, expense, reminder]
+
+    # -- Error --
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Machine-readable error code.
+            message:
+              type: string
+              description: Human-readable description.
+
+    ValidationError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details]
+          properties:
+            code:
+              type: string
+              example: validation_failed
+            message:
+              type: string
+            details:
+              type: array
+              items:
+                type: object
+                required: [field, message]
+                properties:
+                  field:
+                    type: string
+                  message:
+                    type: string
+
+    # -- Health --
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, down]
+        version:
+          type: string
+          description: Application version string.
+        checks:
+          type: object
+          description: Individual dependency checks.
+          additionalProperties:
+            type: string
+            enum: [ok, down]
+
+    # -- Vehicle --
+    Vehicle:
+      type: object
+      required:
+        - id
+        - name
+        - make
+        - model
+        - year
+        - odometer
+        - odometer_unit
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        make:
+          type: string
+        model:
+          type: string
+        year:
+          type: integer
+        vin:
+          type: string
+          maxLength: 17
+        license_plate:
+          type: string
+        odometer:
+          type: integer
+          description: Current odometer reading.
+        odometer_unit:
+          $ref: "#/components/schemas/OdometerUnit"
+        status:
+          $ref: "#/components/schemas/VehicleStatus"
+        acquisition_date:
+          type: string
+          format: date
+        acquisition_cost:
+          type: integer
+          description: Cost in smallest currency unit (e.g. cents).
+        sale_date:
+          type: string
+          format: date
+        sale_price:
+          type: integer
+          description: Sale price in smallest currency unit.
+        notes:
+          type: string
+        custom_fields:
+          type: object
+          description: Arbitrary key-value data stored as JSONB.
+          additionalProperties: true
+        photo_url:
+          type: string
+          format: uri
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    VehicleCreate:
+      type: object
+      required: [name, make, model, year, odometer, odometer_unit]
+      properties:
+        name:
+          type: string
+        make:
+          type: string
+        model:
+          type: string
+        year:
+          type: integer
+        vin:
+          type: string
+          maxLength: 17
+        license_plate:
+          type: string
+        odometer:
+          type: integer
+        odometer_unit:
+          $ref: "#/components/schemas/OdometerUnit"
+        status:
+          $ref: "#/components/schemas/VehicleStatus"
+          default: active
+        acquisition_date:
+          type: string
+          format: date
+        acquisition_cost:
+          type: integer
+        sale_date:
+          type: string
+          format: date
+        sale_price:
+          type: integer
+        notes:
+          type: string
+        custom_fields:
+          type: object
+          additionalProperties: true
+        photo_url:
+          type: string
+          format: uri
+
+    VehicleUpdate:
+      type: object
+      description: All fields optional; only provided fields are changed.
+      properties:
+        name:
+          type: string
+        make:
+          type: string
+        model:
+          type: string
+        year:
+          type: integer
+        vin:
+          type: string
+          maxLength: 17
+        license_plate:
+          type: string
+        odometer:
+          type: integer
+        odometer_unit:
+          $ref: "#/components/schemas/OdometerUnit"
+        status:
+          $ref: "#/components/schemas/VehicleStatus"
+        acquisition_date:
+          type: string
+          format: date
+        acquisition_cost:
+          type: integer
+        sale_date:
+          type: string
+          format: date
+        sale_price:
+          type: integer
+        notes:
+          type: string
+        custom_fields:
+          type: object
+          additionalProperties: true
+        photo_url:
+          type: string
+          format: uri
+
+    VehicleList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Vehicle"
+        next_cursor:
+          type:
+            - string
+            - "null"
+          description: Cursor for the next page, or null if this is the last page.
+
+    # -- Fuel Log --
+    FuelLog:
+      type: object
+      required:
+        - id
+        - vehicle_id
+        - date
+        - odometer
+        - volume
+        - volume_unit
+        - cost
+        - full_tank
+        - missed_fill
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        vehicle_id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+        odometer:
+          type: integer
+        volume:
+          type: number
+          description: Volume of fuel added.
+        volume_unit:
+          $ref: "#/components/schemas/VolumeUnit"
+        cost:
+          type: integer
+          description: Total cost in smallest currency unit.
+        full_tank:
+          type: boolean
+          description: Whether this was a fill-to-full event.
+        missed_fill:
+          type: boolean
+          description: |
+            Set to true when a fill was missed between this entry and the
+            previous one. Fuel economy cannot be reliably calculated across
+            a missed fill.
+        octane:
+          type: string
+        station:
+          type: string
+        notes:
+          type: string
+        fuel_economy:
+          type: number
+          description: |
+            Computed fuel economy for the segment ending at this fill, in the
+            vehicle's odometer unit per volume unit (e.g. mi/gal or km/L).
+            Null when it cannot be computed (first fill, partial fills, or
+            missed fills in the segment).
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    FuelLogCreate:
+      type: object
+      required: [date, odometer, volume, volume_unit, cost, full_tank]
+      properties:
+        date:
+          type: string
+          format: date
+        odometer:
+          type: integer
+        volume:
+          type: number
+        volume_unit:
+          $ref: "#/components/schemas/VolumeUnit"
+        cost:
+          type: integer
+        full_tank:
+          type: boolean
+        missed_fill:
+          type: boolean
+          default: false
+        octane:
+          type: string
+        station:
+          type: string
+        notes:
+          type: string
+
+    FuelLogUpdate:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        odometer:
+          type: integer
+        volume:
+          type: number
+        volume_unit:
+          $ref: "#/components/schemas/VolumeUnit"
+        cost:
+          type: integer
+        full_tank:
+          type: boolean
+        missed_fill:
+          type: boolean
+        octane:
+          type: string
+        station:
+          type: string
+        notes:
+          type: string
+
+    FuelLogList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FuelLog"
+        next_cursor:
+          type:
+            - string
+            - "null"
+
+    # -- Service Record --
+    ServiceRecord:
+      type: object
+      required:
+        - id
+        - vehicle_id
+        - date
+        - description
+        - cost
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        vehicle_id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+        odometer:
+          type: integer
+        description:
+          type: string
+        category:
+          type: string
+        cost:
+          type: integer
+          description: Cost in smallest currency unit.
+        vendor:
+          type: string
+        notes:
+          type: string
+        parts:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServicePartRef"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ServicePartRef:
+      type: object
+      required: [part_id]
+      properties:
+        part_id:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+          default: 1
+
+    ServiceRecordCreate:
+      type: object
+      required: [date, description, cost]
+      properties:
+        date:
+          type: string
+          format: date
+        odometer:
+          type: integer
+        description:
+          type: string
+        category:
+          type: string
+        cost:
+          type: integer
+        vendor:
+          type: string
+        notes:
+          type: string
+        parts:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServicePartRef"
+
+    ServiceRecordUpdate:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        odometer:
+          type: integer
+        description:
+          type: string
+        category:
+          type: string
+        cost:
+          type: integer
+        vendor:
+          type: string
+        notes:
+          type: string
+        parts:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServicePartRef"
+
+    ServiceRecordList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServiceRecord"
+        next_cursor:
+          type:
+            - string
+            - "null"
+
+    # -- Expense --
+    Expense:
+      type: object
+      required:
+        - id
+        - vehicle_id
+        - date
+        - category
+        - description
+        - cost
+        - recurring
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        vehicle_id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+        category:
+          $ref: "#/components/schemas/ExpenseCategory"
+        description:
+          type: string
+        cost:
+          type: integer
+          description: Cost in smallest currency unit.
+        vendor:
+          type: string
+        recurring:
+          type: boolean
+        notes:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ExpenseCreate:
+      type: object
+      required: [date, category, description, cost]
+      properties:
+        date:
+          type: string
+          format: date
+        category:
+          $ref: "#/components/schemas/ExpenseCategory"
+        description:
+          type: string
+        cost:
+          type: integer
+        vendor:
+          type: string
+        recurring:
+          type: boolean
+          default: false
+        notes:
+          type: string
+
+    ExpenseUpdate:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        category:
+          $ref: "#/components/schemas/ExpenseCategory"
+        description:
+          type: string
+        cost:
+          type: integer
+        vendor:
+          type: string
+        recurring:
+          type: boolean
+        notes:
+          type: string
+
+    ExpenseList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Expense"
+        next_cursor:
+          type:
+            - string
+            - "null"
+
+    # -- Reminder --
+    Reminder:
+      type: object
+      required:
+        - id
+        - vehicle_id
+        - name
+        - type
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        vehicle_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          $ref: "#/components/schemas/ReminderType"
+        due_date:
+          type: string
+          format: date
+        due_odometer:
+          type: integer
+        repeat_interval_days:
+          type: integer
+          description: Auto-repeat interval in days after completion.
+        repeat_interval_distance:
+          type: integer
+          description: Auto-repeat interval in distance units after completion.
+        status:
+          $ref: "#/components/schemas/ReminderStatus"
+        notes:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ReminderCreate:
+      type: object
+      required: [name, type]
+      properties:
+        name:
+          type: string
+        type:
+          $ref: "#/components/schemas/ReminderType"
+        due_date:
+          type: string
+          format: date
+        due_odometer:
+          type: integer
+        repeat_interval_days:
+          type: integer
+        repeat_interval_distance:
+          type: integer
+        notes:
+          type: string
+
+    ReminderUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          $ref: "#/components/schemas/ReminderType"
+        due_date:
+          type: string
+          format: date
+        due_odometer:
+          type: integer
+        repeat_interval_days:
+          type: integer
+        repeat_interval_distance:
+          type: integer
+        status:
+          $ref: "#/components/schemas/ReminderStatus"
+        notes:
+          type: string
+
+    ReminderList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Reminder"
+        next_cursor:
+          type:
+            - string
+            - "null"
+
+    ReminderCheckResult:
+      type: object
+      required: [evaluated, newly_overdue]
+      properties:
+        evaluated:
+          type: integer
+          description: Total number of pending reminders evaluated.
+        newly_overdue:
+          type: integer
+          description: Number of reminders transitioned to overdue.
+        overdue_reminders:
+          type: array
+          description: The reminders that became overdue in this check.
+          items:
+            $ref: "#/components/schemas/Reminder"
+
+    # -- Part --
+    Part:
+      type: object
+      required:
+        - id
+        - name
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        part_number:
+          type: string
+        manufacturer:
+          type: string
+        cost:
+          type: integer
+          description: Unit cost in smallest currency unit.
+        vendor:
+          type: string
+        notes:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PartCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        part_number:
+          type: string
+        manufacturer:
+          type: string
+        cost:
+          type: integer
+        vendor:
+          type: string
+        notes:
+          type: string
+
+    PartUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        part_number:
+          type: string
+        manufacturer:
+          type: string
+        cost:
+          type: integer
+        vendor:
+          type: string
+        notes:
+          type: string
+
+    PartList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Part"
+        next_cursor:
+          type:
+            - string
+            - "null"
+
+    # -- Webhook --
+    Webhook:
+      type: object
+      required:
+        - id
+        - url
+        - events
+        - active
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        url:
+          type: string
+          format: uri
+          description: HTTPS endpoint that receives POST payloads.
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookEvent"
+          description: Events this webhook subscribes to. An empty array means all events.
+        active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WebhookWithSecret:
+      allOf:
+        - $ref: "#/components/schemas/Webhook"
+        - type: object
+          required: [secret]
+          properties:
+            secret:
+              type: string
+              description: |
+                HMAC-SHA256 signing secret. Returned only on creation.
+                Store it securely — it cannot be retrieved again.
+
+    WebhookCreate:
+      type: object
+      required: [url, events]
+      properties:
+        url:
+          type: string
+          format: uri
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookEvent"
+        active:
+          type: boolean
+          default: true
+
+    WebhookUpdate:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookEvent"
+        active:
+          type: boolean
+
+    WebhookList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Webhook"
+        next_cursor:
+          type:
+            - string
+            - "null"
+
+    # -- Timeline --
+    TimelineEntry:
+      type: object
+      required: [type, date, id]
+      properties:
+        type:
+          $ref: "#/components/schemas/TimelineEventType"
+        date:
+          type: string
+          format: date
+        id:
+          type: string
+          format: uuid
+          description: ID of the underlying resource.
+        odometer:
+          type: integer
+        summary:
+          type: string
+          description: Human-readable one-line summary.
+        cost:
+          type: integer
+          description: Cost in smallest currency unit, if applicable.
+        detail:
+          description: |
+            The full resource object. Discriminated by the `type` field:
+            fuel_log -> FuelLog, service_record -> ServiceRecord,
+            expense -> Expense, reminder -> Reminder.
+          oneOf:
+            - $ref: "#/components/schemas/FuelLog"
+            - $ref: "#/components/schemas/ServiceRecord"
+            - $ref: "#/components/schemas/Expense"
+            - $ref: "#/components/schemas/Reminder"
+
+    TimelineList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TimelineEntry"
+        next_cursor:
+          type:
+            - string
+            - "null"
+
+    # -- Stats --
+    FleetStats:
+      type: object
+      required:
+        - total_vehicles
+        - vehicles_by_status
+        - total_cost
+        - cost_by_category
+      properties:
+        total_vehicles:
+          type: integer
+        vehicles_by_status:
+          type: object
+          properties:
+            active:
+              type: integer
+            inactive:
+              type: integer
+            sold:
+              type: integer
+        total_cost:
+          type: integer
+          description: Sum of all expenses in smallest currency unit.
+        cost_by_category:
+          type: object
+          description: Breakdown keyed by ExpenseCategory.
+          additionalProperties:
+            type: integer
+
+    # -- Webhook Delivery Payload (informational) --
+    WebhookPayload:
+      type: object
+      description: |
+        Shape of the JSON body POSTed to webhook endpoints. Included here
+        for documentation purposes; it is not used in any request/response
+        directly.
+      required: [event, timestamp, data]
+      properties:
+        event:
+          $ref: "#/components/schemas/WebhookEvent"
+        timestamp:
+          type: string
+          format: date-time
+        data:
+          type: object
+          description: The full resource that triggered the event.
+          additionalProperties: true
+
+security:
+  - bearerAuth: []
