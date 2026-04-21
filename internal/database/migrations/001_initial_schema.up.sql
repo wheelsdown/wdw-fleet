@@ -53,6 +53,16 @@ CREATE TABLE site_config (
     fuel_tracking_enabled   BOOL NOT NULL DEFAULT TRUE,
     parts_markup_enabled    BOOL NOT NULL DEFAULT FALSE,
 
+    -- Avatar resolution. When a user has no uploaded avatar_url:
+    --   * libravatar_enabled=TRUE  -> derive from libravatar (federated,
+    --     open source, email-hash based; no Automattic involvement)
+    --   * libravatar_gravatar_fallback=TRUE -> if libravatar has no record,
+    --     tell libravatar to fall back to Gravatar (requires opt-in because
+    --     Gravatar is proprietary and tracks IP addresses)
+    --   * both FALSE -> render initials only (no email hash leaves the server)
+    libravatar_enabled              BOOL NOT NULL DEFAULT TRUE,
+    libravatar_gravatar_fallback    BOOL NOT NULL DEFAULT FALSE,
+
     -- IMAP receipt ingestion (all optional; only used if imap_enabled)
     imap_enabled            BOOL   NOT NULL DEFAULT FALSE,
     imap_host               TEXT   NOT NULL DEFAULT '',

@@ -176,6 +176,13 @@ the build pipeline. Production operators copy the compose file, edit
   lands).
 - **No TLS verification bypass** anywhere. If a self-signed cert needs
   trusting, document it and pin explicitly.
+- **Avatars** resolve in this priority: (1) locally-uploaded
+  `users.avatar_url`, (2) Libravatar (federated, open source) if
+  `site_config.libravatar_enabled`, (3) Gravatar fallback if
+  `site_config.libravatar_gravatar_fallback` (opt-in; Gravatar is
+  proprietary and tracks IPs), (4) client-rendered initials. The
+  default is Libravatar on, Gravatar off — no email hash reaches
+  Automattic unless an operator explicitly enables it.
 
 ## Gotchas
 
