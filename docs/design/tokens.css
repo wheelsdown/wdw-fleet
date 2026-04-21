@@ -1,0 +1,149 @@
+/* FleetAware — design tokens
+ * Paste into your global stylesheet. Theme is switched by setting
+ * [data-theme="light"] or [data-theme="dark"] on <html>.
+ * Primary/accent overrides at runtime: replace --wdw-teal / --wdw-orange
+ * (and their soft/deep variants) on :root. */
+
+:root,
+:root[data-theme="light"] {
+  /* Brand */
+  --wdw-teal:        #1f7a7f;
+  --wdw-teal-deep:   #155256;
+  --wdw-teal-soft:   #e6f2f2;
+  --wdw-orange:      #e85c2b;
+  --wdw-orange-soft: #fbe5db;
+
+  /* Ink */
+  --wdw-ink:   #15181a;
+  --wdw-ink-2: #2a2e31;
+  --wdw-ink-3: #4a4f54;
+  --wdw-muted: #7a7f85;
+  --wdw-faint: #c5c9cd;
+
+  /* Lines & surfaces */
+  --wdw-line:        #e4e1d9;
+  --wdw-line-strong: #cfcac0;
+  --wdw-paper:       #f7f4ed;
+  --wdw-paper-alt:   #eeeae1;
+  --wdw-card:        #ffffff;
+
+  /* Status */
+  --wdw-good: #2f7d4a;
+  --wdw-warn: #b97a0e;
+  --wdw-bad:  #b03a2e;
+
+  /* Elevation */
+  --wdw-shadow-modal:    0 24px 60px rgba(0, 0, 0, 0.28);
+  --wdw-shadow-toast:    0 8px 20px rgba(0, 0, 0, 0.22);
+  --wdw-shadow-dropdown: 0 12px 28px rgba(0, 0, 0, 0.18);
+  --wdw-shadow-fab:      0 8px 20px rgba(232, 92, 43, 0.35);
+
+  /* Radii */
+  --wdw-radius-chip:   3px;
+  --wdw-radius-input:  4px;
+  --wdw-radius-btn:    6px;
+  --wdw-radius-card:   10px;
+  --wdw-radius-modal:  10px;
+  --wdw-radius-pill:   999px;
+  --wdw-radius-avatar: 15px;
+
+  /* Spacing (4px rhythm) */
+  --wdw-space-1:  4px;
+  --wdw-space-2:  8px;
+  --wdw-space-3:  12px;
+  --wdw-space-4:  16px;
+  --wdw-space-5:  20px;
+  --wdw-space-6:  24px;
+  --wdw-space-8:  32px;
+  --wdw-space-10: 40px;
+
+  /* Type scale */
+  --wdw-font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --wdw-font-mono: 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+  --wdw-features-sans: 'cv11', 'ss01', 'ss03';
+  --wdw-features-mono: 'zero', 'ss01';
+}
+
+:root[data-theme="dark"] {
+  --wdw-teal:        #4fb6bb;
+  --wdw-teal-deep:   #7ccacd;
+  --wdw-teal-soft:   #1c3a3c;
+  --wdw-orange:      #f07a4d;
+  --wdw-orange-soft: #3b241d;
+
+  --wdw-ink:   #ece8dc;
+  --wdw-ink-2: #d0ccc1;
+  --wdw-ink-3: #a6a297;
+  --wdw-muted: #7d7a73;
+  --wdw-faint: #3e4246;
+
+  --wdw-line:        #2b3033;
+  --wdw-line-strong: #3b4044;
+  --wdw-paper:       #14171a;
+  --wdw-paper-alt:   #1c1f23;
+  --wdw-card:        #22272a;
+
+  --wdw-good: #67b886;
+  --wdw-warn: #d4a64a;
+  --wdw-bad:  #d96b5c;
+
+  --wdw-shadow-modal:    0 24px 60px rgba(0, 0, 0, 0.55);
+  --wdw-shadow-toast:    0 8px 20px rgba(0, 0, 0, 0.45);
+  --wdw-shadow-dropdown: 0 12px 28px rgba(0, 0, 0, 0.45);
+  --wdw-shadow-fab:      0 8px 20px rgba(232, 92, 43, 0.40);
+}
+
+/* Auto theme — follow OS when no explicit [data-theme] is set */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --wdw-teal:        #4fb6bb;
+    --wdw-teal-deep:   #7ccacd;
+    --wdw-teal-soft:   #1c3a3c;
+    --wdw-orange:      #f07a4d;
+    --wdw-orange-soft: #3b241d;
+    --wdw-ink:   #ece8dc;
+    --wdw-ink-2: #d0ccc1;
+    --wdw-ink-3: #a6a297;
+    --wdw-muted: #7d7a73;
+    --wdw-faint: #3e4246;
+    --wdw-line:        #2b3033;
+    --wdw-line-strong: #3b4044;
+    --wdw-paper:       #14171a;
+    --wdw-paper-alt:   #1c1f23;
+    --wdw-card:        #22272a;
+    --wdw-good: #67b886;
+    --wdw-warn: #d4a64a;
+    --wdw-bad:  #d96b5c;
+  }
+}
+
+/* Root typography — apply .wdw to the app root */
+.wdw {
+  font-family: var(--wdw-font-sans);
+  font-feature-settings: var(--wdw-features-sans);
+  color: var(--wdw-ink);
+  background: var(--wdw-paper);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.wdw-mono {
+  font-family: var(--wdw-font-mono);
+  font-feature-settings: var(--wdw-features-mono);
+  font-weight: 500;
+}
+
+/* Text styles */
+.wdw-h1       { font-size: 22px; font-weight: 600; letter-spacing: -0.3px; line-height: 1.2;  }
+.wdw-h2       { font-size: 16px; font-weight: 600; letter-spacing: -0.1px; line-height: 1.25; }
+.wdw-eyebrow  { font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: var(--wdw-ink-3); }
+.wdw-small    { font-size: 13px; font-weight: 400; line-height: 1.45; }
+.wdw-tiny     { font-size: 11px; font-weight: 400; line-height: 1.4; }
+.wdw-muted    { color: var(--wdw-muted); }
+
+/* Focus ring */
+.wdw *:focus-visible {
+  outline: none;
+  border-color: var(--wdw-teal);
+  box-shadow: 0 0 0 3px var(--wdw-teal-soft);
+}

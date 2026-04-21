@@ -1,0 +1,2963 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>FleetAware · Mid-fi prototype</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    html, body, #root { margin: 0; padding: 0; height: 100%; width: 100%; background: #f7f4ed; }
+    body { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; color: #15181a; }
+  </style>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    window.addEventListener('error', e => {
+      console.error('CAUGHT:', e.message, 'at', e.filename + ':' + e.lineno + ':' + e.colno, e.error && e.error.stack);
+      const d = document.getElementById('root');
+      if (d && !d.hasChildNodes()) d.innerHTML = '<pre style="padding:20px;font-family:monospace;color:#b03a2e;white-space:pre-wrap;font-size:11px">' + (e.message || '?') + '\n' + (e.error && e.error.stack || '') + '</pre>';
+    });
+  </script>
+  <script type="text/babel" data-presets="react">
+
+// ═══════════════════ midfi/tokens.jsx ═══════════════════
+// WDW Fleet · mid-fi design tokens + shared UI
+// Palette: teal primary, orange accent, near-black ink, warm paper neutrals.
+// Type: Inter for UI, JetBrains Mono for data/tabular.
+
+// Base palettes — WDW is mutated by applyPalette() to match user theme + site colors.
+const WDW_LIGHT = {
+  teal:       '#1f7a7f',
+  tealDeep:   '#155256',
+  tealSoft:   '#e6f2f2',
+  orange:     '#e85c2b',
+  orangeSoft: '#fbe5db',
+  ink:        '#15181a',
+  ink2:       '#2a2e31',
+  ink3:       '#4a4f54',
+  muted:      '#7a7f85',
+  faint:      '#c5c9cd',
+  line:       '#e4e1d9',
+  lineStrong: '#cfcac0',
+  paper:      '#f7f4ed',
+  paperAlt:   '#eeeae1',
+  card:       '#ffffff',
+  good:       '#2f7d4a',
+  warn:       '#b97a0e',
+  bad:        '#b03a2e',
+};
+const WDW_DARK = {
+  teal:       '#4fb6bb',
+  tealDeep:   '#7fd1d5',
+  tealSoft:   '#1e383a',
+  orange:     '#f07a4d',
+  orangeSoft: '#3a241a',
+  ink:        '#ece8dc',
+  ink2:       '#d8d3c4',
+  ink3:       '#a49f93',
+  muted:      '#7a7770',
+  faint:      '#4a4f54',
+  line:       '#2e3336',
+  lineStrong: '#3f4549',
+  paper:      '#14171a',
+  paperAlt:   '#1b1f22',
+  card:       '#22272a',
+  good:       '#6abe87',
+  warn:       '#e0a94e',
+  bad:        '#e07b6a',
+};
+const WDW = {
+  ...WDW_LIGHT,
+  sans: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+  mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
+};
+
+// Site + user config live on window so any component can read them.
+const SITE_CONFIG_DEFAULT = {
+  siteTitle:    'FleetAware',
+  tagline:      'Wheels Down Workshop',
+  primaryColor: null,   // null = use palette default (teal)
+  accentColor:  null,
+};
+const USER_PROFILE_DEFAULT = {
+  name:     'Jack Holloway',
+  email:    'jack@macnugget.org',
+  initials: 'JB',
+  avatar:   null,       // data URL or null → fall back to initials on teal disc
+  theme:    'auto',     // light | dark | auto
+  density:  'comfortable',
+  isAdmin:  true,
+};
+const loadJson = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v ? { ...d, ...v } : { ...d }; } catch { return { ...d }; } };
+window.__siteConfig  = loadJson('wdw_site_config',  SITE_CONFIG_DEFAULT);
+window.__userProfile = loadJson('wdw_user_profile', USER_PROFILE_DEFAULT);
+
+function resolvePalette(userTheme, siteConfig) {
+  const systemDark = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const effective = userTheme === 'auto' ? (systemDark ? 'dark' : 'light') : userTheme;
+  const base = effective === 'dark' ? WDW_DARK : WDW_LIGHT;
+  const out = { ...base };
+  if (siteConfig && siteConfig.primaryColor) { out.teal = siteConfig.primaryColor; out.tealDeep = siteConfig.primaryColor; }
+  if (siteConfig && siteConfig.accentColor)  { out.orange = siteConfig.accentColor; }
+  out.__effective = effective;
+  return out;
+}
+
+function applyPalette(palette) {
+  Object.assign(WDW, palette);
+  if (typeof document !== 'undefined') {
+    document.documentElement.dataset.wdwTheme = palette.__effective || 'light';
+    rebuildWdwStyles();
+  }
+}
+
+// Inject fonts once
+if (typeof document !== 'undefined' && !document.getElementById('wdw-font-link')) {
+  const fl = document.createElement('link');
+  fl.rel = 'stylesheet';
+  fl.id = 'wdw-font-link';
+  fl.href = 'https://fonts.bunny.net/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap';
+  document.head.appendChild(fl);
+}
+
+// Re-inject the WDW stylesheet whenever the palette changes. All rules below read
+// from the live WDW object, so swapping palette → rebuilding styles → visually consistent.
+function rebuildWdwStyles() {
+  if (typeof document === 'undefined') return;
+  let s = document.getElementById('wdw-styles');
+  if (!s) {
+    s = document.createElement('style');
+    s.id = 'wdw-styles';
+    document.head.appendChild(s);
+  }
+  s.textContent = `
+    .wdw { font-family: ${WDW.sans}; color: ${WDW.ink}; background: ${WDW.paper}; height: 100%; width: 100%; position: relative; overflow: hidden; font-feature-settings: 'cv11','ss01','ss03'; }
+    .wdw *, .wdw *::before, .wdw *::after { box-sizing: border-box; }
+    .wdw-mono { font-family: ${WDW.mono}; font-feature-settings: 'zero','ss01'; }
+
+    /* type scale */
+    .wdw-h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.3px; line-height: 1.2; }
+    .wdw-h2 { font-size: 16px; font-weight: 600; letter-spacing: -0.1px; line-height: 1.25; }
+    .wdw-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: ${WDW.muted}; }
+    .wdw-body { font-size: 13px; line-height: 1.45; }
+    .wdw-small { font-size: 12px; }
+    .wdw-tiny { font-size: 11px; }
+    .wdw-muted { color: ${WDW.muted}; }
+    .wdw-faint { color: ${WDW.faint}; }
+
+    /* rows */
+    .wdw-row { display: flex; align-items: center; gap: 8px; }
+    .wdw-col { display: flex; flex-direction: column; }
+
+    /* surfaces */
+    .wdw-card { background: ${WDW.card}; border: 1px solid ${WDW.line}; border-radius: 6px; }
+    .wdw-card-soft { background: ${WDW.paper}; border: 1px solid ${WDW.line}; border-radius: 6px; }
+    .wdw-divider { height: 1px; background: ${WDW.line}; width: 100%; }
+
+    /* buttons */
+    .wdw-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 5px; font-size: 12.5px; font-weight: 500; border: 1px solid ${WDW.lineStrong}; background: ${WDW.card}; color: ${WDW.ink}; cursor: pointer; line-height: 1; height: 30px; font-family: inherit; }
+    .wdw-btn:hover { border-color: ${WDW.ink3}; }
+    .wdw-btn-primary { background: ${WDW.teal}; color: #fff; border-color: ${WDW.teal}; }
+    .wdw-btn-primary:hover { background: ${WDW.tealDeep}; border-color: ${WDW.tealDeep}; }
+    .wdw-btn-accent { background: ${WDW.orange}; color: #fff; border-color: ${WDW.orange}; }
+    .wdw-btn-ghost { background: transparent; border-color: transparent; color: ${WDW.ink3}; }
+    .wdw-btn-ghost:hover { background: ${WDW.paperAlt}; }
+    .wdw-btn-sm { padding: 4px 8px; font-size: 11.5px; height: 24px; }
+
+    /* pills, chips, tags */
+    .wdw-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 500; border: 1px solid ${WDW.lineStrong}; background: ${WDW.card}; color: ${WDW.ink3}; }
+    .wdw-pill-teal { background: ${WDW.tealSoft}; color: ${WDW.tealDeep}; border-color: transparent; }
+    .wdw-pill-orange { background: ${WDW.orangeSoft}; color: ${WDW.orange}; border-color: transparent; }
+    .wdw-pill-good { color: ${WDW.good}; border-color: ${WDW.good}; }
+    .wdw-pill-warn { color: ${WDW.warn}; border-color: ${WDW.warn}; }
+    .wdw-pill-bad { color: ${WDW.bad}; border-color: ${WDW.bad}; }
+    .wdw-chip { display: inline-block; padding: 1px 5px; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; text-transform: uppercase; background: ${WDW.paperAlt}; color: ${WDW.ink3}; border-radius: 3px; }
+
+    /* status dots */
+    .wdw-dot { width: 8px; height: 8px; border-radius: 4px; flex-shrink: 0; display: inline-block; }
+
+    /* inputs */
+    .wdw-input { height: 30px; padding: 0 10px; border: 1px solid ${WDW.lineStrong}; border-radius: 5px; background: ${WDW.card}; font-family: inherit; font-size: 13px; color: ${WDW.ink}; width: 100%; }
+    .wdw-input:focus { outline: none; border-color: ${WDW.teal}; box-shadow: 0 0 0 3px ${WDW.tealSoft}; }
+
+    /* photo placeholder */
+    .wdw-photo {
+      background:
+        linear-gradient(135deg, ${WDW.paperAlt} 25%, transparent 25%) 0 0 / 12px 12px,
+        linear-gradient(135deg, transparent 75%, ${WDW.paperAlt} 75%) 6px 6px / 12px 12px,
+        ${WDW.paper};
+      border: 1px solid ${WDW.line};
+      border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      color: ${WDW.muted}; font-size: 11px;
+    }
+
+    /* hover affordance */
+    .wdw-click { cursor: pointer; transition: background .1s, border-color .1s; }
+    .wdw-click:hover { background: ${WDW.paperAlt}; }
+
+    /* scrollbar hygiene */
+    .wdw *::-webkit-scrollbar { width: 8px; height: 8px; }
+    .wdw *::-webkit-scrollbar-thumb { background: ${WDW.faint}; border-radius: 4px; }
+    .wdw *::-webkit-scrollbar-track { background: transparent; }
+  `;
+}
+
+// initial paint
+applyPalette(resolvePalette(window.__userProfile.theme, window.__siteConfig));
+
+// — Logo —
+function WdwLogo({ size = 28 }) {
+  return (
+    <div style={{ width: size, height: size, borderRadius: 6, background: WDW.ink, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+      <img src="data:image/png;base64,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" alt="" style={{ width: size * 0.82, height: size * 0.82, objectFit: 'contain', filter: 'brightness(0) invert(1)', mixBlendMode: 'screen' }} />
+    </div>
+  );
+}
+
+// — Icons (small, sharp) —
+const I = {
+  search: <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="6" cy="6" r="4.5"/><path d="M9.5 9.5 L12.5 12.5" strokeLinecap="round"/></svg>,
+  plus: <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M7 2V12M2 7H12"/></svg>,
+  camera: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1.5" y="4" width="13" height="9" rx="1.5"/><circle cx="8" cy="8.5" r="2.5"/><path d="M5.5 4 L6.5 2.5 L9.5 2.5 L10.5 4"/></svg>,
+  chev: <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 2L6.5 5 3 8"/></svg>,
+  chevDown: <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 3.5L5 6.5L8 3.5"/></svg>,
+  bell: <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 10V6.5a4 4 0 1 1 8 0V10l1 1.5H2L3 10Z"/><path d="M5.5 12.5a1.5 1.5 0 0 0 3 0"/></svg>,
+  cmd: <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M3.5 1.5a1.5 1.5 0 1 0 0 3H8.5a1.5 1.5 0 1 0 0-3V8.5a1.5 1.5 0 1 0-3 0V3.5a1.5 1.5 0 1 0-3 0V8.5a1.5 1.5 0 1 0 3 0" strokeLinejoin="round"/></svg>,
+  doc: <svg width="12" height="14" viewBox="0 0 12 14" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M2 1h5l3 3v9a0 0 0 0 1 0 0H2a0 0 0 0 1 0 0V1Z"/><path d="M7 1v3h3"/></svg>,
+  image: <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3"><rect x="1.5" y="2" width="11" height="10" rx="1"/><circle cx="5" cy="5.5" r="1"/><path d="M1.5 10L4.5 7L7.5 9.5L10 7L12.5 9.5"/></svg>,
+  check: <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M2 6.5 L5 9.5 L10.5 3"/></svg>,
+  x: <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 3L9 9M9 3L3 9"/></svg>,
+  more: <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><circle cx="3" cy="7" r="1.2"/><circle cx="7" cy="7" r="1.2"/><circle cx="11" cy="7" r="1.2"/></svg>,
+  arrowR: <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 5H8M6 3L8 5L6 7"/></svg>,
+};
+
+// — Top nav shell shared across screens —
+function WdwTopNav({ active = 'Fleet', onNav, onSearch, onCmd }) {
+  onNav = onNav || window.__wdwNav || (() => {});
+  const items = ['Fleet', 'Reminders', 'Tasks', 'Parts', 'Unfiled', 'Reports'];
+  return (
+    <div style={{
+      height: 52, borderBottom: `1px solid ${WDW.line}`, background: WDW.card,
+      display: 'flex', alignItems: 'center', padding: '0 18px', gap: 20, flexShrink: 0,
+    }}>
+      <div className="wdw-row" style={{ gap: 10 }}>
+        <div style={{ width: 30, height: 30, borderRadius: 6, overflow: 'hidden', background: '#fff', border: `1px solid ${WDW.line}` }}>
+          <img src="data:image/png;base64,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" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+        </div>
+        <div style={{ lineHeight: 1.05 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: -0.2 }}>{(window.__siteConfig || {}).siteTitle || 'FleetAware'}</div>
+          <div className="wdw-tiny wdw-muted" style={{ fontSize: 9.5, letterSpacing: 0.4, textTransform: 'uppercase' }}>{(window.__siteConfig || {}).tagline || 'Wheels Down Workshop'}</div>
+        </div>
+      </div>
+      <div className="wdw-row" style={{ gap: 4, marginLeft: 14 }}>
+        {items.map(i => (
+          <div key={i} onClick={() => onNav && onNav(i)} className="wdw-click" style={{
+            padding: '6px 10px', borderRadius: 5, fontSize: 13, fontWeight: 500,
+            color: i === active ? WDW.ink : WDW.ink3,
+            background: i === active ? WDW.paperAlt : 'transparent',
+            position: 'relative',
+          }}>
+            {i}
+            {i === active && <div style={{ position: 'absolute', bottom: -15, left: 10, right: 10, height: 2, background: WDW.teal, borderRadius: 1 }} />}
+          </div>
+        ))}
+      </div>
+      <div style={{ flex: 1 }} />
+      <div onClick={onCmd} className="wdw-click" style={{
+        height: 32, display: 'flex', alignItems: 'center', gap: 8, padding: '0 10px',
+        border: `1px solid ${WDW.line}`, borderRadius: 6, background: WDW.paper, minWidth: 280,
+        color: WDW.muted, fontSize: 12.5,
+      }}>
+        <span style={{ color: WDW.ink3 }}>{I.search}</span>
+        <span>Search or run a command…</span>
+        <div style={{ flex: 1 }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '2px 5px', background: WDW.card, border: `1px solid ${WDW.line}`, borderRadius: 3, fontSize: 10, fontWeight: 600, color: WDW.ink3 }}>
+          <span style={{ transform: 'translateY(-1px)' }}>⌘</span>K
+        </div>
+      </div>
+      <div className="wdw-btn wdw-btn-sm wdw-btn-ghost" style={{ padding: 6, width: 30 }}>{I.bell}</div>
+      <AvatarMenu onNav={onNav} />
+    </div>
+  );
+}
+
+// — User avatar (image or initials) —
+function UserAvatar({ user, size = 30, style }) {
+  const u = user || window.__userProfile;
+  const common = {
+    width: size, height: size, borderRadius: size / 2,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden', flexShrink: 0, ...style,
+  };
+  if (u.avatar) {
+    return <img src={u.avatar} alt={u.name} style={{ ...common, objectFit: 'cover', background: WDW.paperAlt }} />;
+  }
+  return (
+    <div style={{
+      ...common,
+      background: WDW.teal, color: '#fff',
+      fontSize: Math.max(10, size * 0.38), fontWeight: 600, letterSpacing: 0.2,
+    }}>{u.initials || '?'}</div>
+  );
+}
+
+// — Avatar menu (profile/theme/admin) —
+function AvatarMenu({ onNav }) {
+  const [open, setOpen] = React.useState(false);
+  const [, force] = React.useReducer(x => x + 1, 0);
+  const menuRef = React.useRef(null);
+  const user = window.__userProfile;
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  const setTheme = (t) => {
+    window.__userProfile = { ...user, theme: t };
+    localStorage.setItem('wdw_user_profile', JSON.stringify(window.__userProfile));
+    applyPalette(resolvePalette(t, window.__siteConfig));
+    if (window.__rerenderApp) window.__rerenderApp();
+    force();
+  };
+
+  const themes = [
+    ['light', 'Light'],
+    ['dark',  'Dark'],
+    ['auto',  'Auto'],
+  ];
+
+  return (
+    <div style={{ position: 'relative' }} ref={menuRef}>
+      <div onClick={() => setOpen(!open)} className="wdw-click" style={{
+        outline: open ? `2px solid ${WDW.tealSoft}` : 'none', outlineOffset: 2, borderRadius: 15, cursor: 'pointer',
+      }}>
+        <UserAvatar user={user} size={30} />
+      </div>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: 40, right: 0, zIndex: 40,
+          width: 240, background: WDW.card, borderRadius: 8,
+          border: `1px solid ${WDW.line}`, boxShadow: '0 12px 28px rgba(0,0,0,0.18)',
+          overflow: 'hidden', color: WDW.ink, fontFamily: WDW.sans,
+        }}>
+          <div style={{ padding: '12px 14px', borderBottom: `1px solid ${WDW.line}` }}>
+            <div className="wdw-small" style={{ fontWeight: 600 }}>{user.name}</div>
+            <div className="wdw-tiny wdw-muted wdw-mono" style={{ fontSize: 11, marginTop: 2 }}>{user.email}</div>
+            {user.isAdmin && <div style={{ marginTop: 6 }}><span className="wdw-chip" style={{ background: WDW.tealSoft, color: WDW.tealDeep }}>Admin</span></div>}
+          </div>
+
+          <div style={{ padding: 6 }}>
+            <div onClick={() => { setOpen(false); onNav && onNav('Profile'); }} className="wdw-click" style={{ padding: '8px 10px', borderRadius: 4, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              Profile & preferences
+            </div>
+            {user.isAdmin && (
+              <div onClick={() => { setOpen(false); onNav && onNav('Admin'); }} className="wdw-click" style={{ padding: '8px 10px', borderRadius: 4, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                Site administration
+              </div>
+            )}
+          </div>
+
+          <div style={{ padding: '8px 10px 12px', borderTop: `1px solid ${WDW.line}` }}>
+            <div className="wdw-eyebrow" style={{ fontSize: 10, marginBottom: 6 }}>Theme</div>
+            <div style={{ display: 'flex', gap: 2, padding: 2, background: WDW.paperAlt, borderRadius: 5 }}>
+              {themes.map(([k, label]) => (
+                <div key={k} onClick={() => setTheme(k)} className="wdw-click" style={{
+                  flex: 1, textAlign: 'center', padding: '4px 6px', borderRadius: 3, fontSize: 11.5, fontWeight: 500,
+                  background: user.theme === k ? WDW.card : 'transparent',
+                  color: user.theme === k ? WDW.ink : WDW.ink3,
+                  boxShadow: user.theme === k ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                }}>{label}</div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// — Status dot + helper —
+function StatusDot({ status }) {
+  const map = { ok: WDW.good, 'due-soon': WDW.warn, overdue: WDW.bad, idle: WDW.muted };
+  return <span className="wdw-dot" style={{ background: map[status] || WDW.muted }} />;
+}
+
+// — Vehicle glyphs (cleaner mid-fi versions) —
+function VGlyph({ type = 'truck', size = 42, color = WDW.ink3 }) {
+  const paths = {
+    truck: <g stroke={color} strokeWidth="1.6" fill="none" strokeLinejoin="round"><path d="M4 32 L4 22 Q4 20 6 20 L34 20 L40 12 L54 12 L60 20 L74 20 Q76 20 76 22 L76 32"/><path d="M4 32 L76 32"/><circle cx="18" cy="34" r="4" fill={color} fillOpacity=".15"/><circle cx="62" cy="34" r="4" fill={color} fillOpacity=".15"/><path d="M40 12 L40 20 M54 12 L54 20"/></g>,
+    tractor: <g stroke={color} strokeWidth="1.6" fill="none" strokeLinejoin="round"><rect x="28" y="10" width="22" height="14"/><path d="M20 24 L58 24 L58 32 L20 32 Z"/><circle cx="24" cy="34" r="4" fill={color} fillOpacity=".15"/><circle cx="58" cy="32" r="7" fill={color} fillOpacity=".15"/><path d="M30 10 L48 10 M52 14 L68 14 L68 24"/></g>,
+    atv: <g stroke={color} strokeWidth="1.6" fill="none" strokeLinejoin="round"><path d="M14 28 L22 18 L50 18 L62 28"/><path d="M40 12 L52 18"/><circle cx="18" cy="32" r="4.5" fill={color} fillOpacity=".15"/><circle cx="60" cy="32" r="4.5" fill={color} fillOpacity=".15"/></g>,
+    trailer: <g stroke={color} strokeWidth="1.6" fill="none" strokeLinejoin="round"><rect x="10" y="14" width="54" height="14"/><path d="M64 21 L74 21"/><circle cx="24" cy="30" r="3.5" fill={color} fillOpacity=".15"/><circle cx="50" cy="30" r="3.5" fill={color} fillOpacity=".15"/></g>,
+    gen: <g stroke={color} strokeWidth="1.6" fill="none" strokeLinejoin="round"><rect x="12" y="14" width="56" height="22" rx="2"/><path d="M18 20 L30 20 M18 26 L30 26 M18 32 L30 32"/><circle cx="54" cy="25" r="5"/></g>,
+    car: <g stroke={color} strokeWidth="1.6" fill="none" strokeLinejoin="round"><path d="M6 30 Q6 22 12 22 L20 22 L28 14 L52 14 L60 22 L68 22 Q74 22 74 30"/><path d="M6 30 L74 30"/><circle cx="20" cy="32" r="4" fill={color} fillOpacity=".15"/><circle cx="60" cy="32" r="4" fill={color} fillOpacity=".15"/><path d="M28 14 L28 22 M44 14 L44 22"/></g>,
+    track: <g stroke={color} strokeWidth="1.6" fill="none" strokeLinejoin="round"><path d="M4 30 Q4 26 8 26 L14 26 L22 18 Q24 16 28 16 L50 16 Q54 16 58 19 L66 26 L74 26 Q76 26 76 30"/><path d="M4 30 L76 30"/><circle cx="18" cy="32" r="4" fill={color} fillOpacity=".15"/><circle cx="62" cy="32" r="4" fill={color} fillOpacity=".15"/><path d="M24 18 L24 26 M44 16 L44 26 M58 19 L58 26"/><path d="M30 30 L30 34 L36 34 L36 30" fill={color} fillOpacity=".2"/></g>,
+    race: <g stroke={color} strokeWidth="1.6" fill="none" strokeLinejoin="round"><path d="M4 28 Q4 26 6 25 L18 22 L28 14 L48 14 L60 22 L74 25 Q76 26 76 28 L76 30 L4 30 Z" fill={color} fillOpacity=".05"/><circle cx="20" cy="30" r="4" fill={color} fillOpacity=".2"/><circle cx="60" cy="30" r="4" fill={color} fillOpacity=".2"/><path d="M30 14 L30 22 M44 14 L44 22"/><path d="M36 24 L40 24 M42 24 L46 24" strokeWidth="2"/></g>,
+  };
+  return (
+    <svg width={size} height={size * 0.55} viewBox="0 0 80 44" style={{ display: 'block' }}>
+      {paths[type]}
+    </svg>
+  );
+}
+
+// — Photo placeholder with glyph —
+function PhotoHolder({ w, h, glyph, label, style = {} }) {
+  const numW = typeof w === 'number' ? w : 160;
+  const numH = typeof h === 'number' ? h : 90;
+  const glyphSize = Math.min(numW, numH) * 0.6;
+  return (
+    <div className="wdw-photo" style={{ width: w, height: h, flexDirection: 'column', gap: 4, ...style }}>
+      {glyph && <VGlyph type={glyph} size={glyphSize} color={WDW.faint} />}
+      {label && <span style={{ color: WDW.muted, fontSize: 10, letterSpacing: 0.3, textTransform: 'uppercase' }}>{label}</span>}
+    </div>
+  );
+}
+
+Object.assign(window, { WDW, WdwLogo, WdwTopNav, AvatarMenu, UserAvatar, StatusDot, VGlyph, PhotoHolder, I, applyPalette, resolvePalette, WDW_LIGHT, WDW_DARK });
+
+
+// ═══════════════════ midfi/data.jsx ═══════════════════
+// Shared demo data across all mid-fi screens
+const FLEET = [
+  { id: 'e46m3',    name: 'E46 M3 · #142',         make: 'BMW',       model: 'E46 M3 Competition',          year: 2004, vin: 'WBSBL93446PN12345',  glyph: 'race',    odo: 112480, unit: 'mi', status: 'due-soon',  dueIn: 'Brake bleed in 2 events', tags: ['Track', 'NASA TT3'] },
+  { id: 'miata',    name: 'NA Miata · Spec',       make: 'Mazda',     model: 'MX-5 Spec',                   year: 1994, vin: 'JM1NA3510R0123456',  glyph: 'race',    odo: 148200, unit: 'mi', status: 'overdue',   dueIn: '⚠ diff fluid overdue 3 events', tags: ['Track', 'Spec Miata'] },
+  { id: 'gt4',      name: 'Cayman GT4',            make: 'Porsche',   model: '718 Cayman GT4',              year: 2022, vin: 'WP0AC2A81NS12345',   glyph: 'track',   odo: 18420,  unit: 'mi', status: 'ok',        dueIn: 'PDK fluid @ 30,000 mi',   tags: ['Track', 'Street'] },
+  { id: 'wrx',      name: 'WRX · Daily',           make: 'Subaru',    model: 'WRX STI',                      year: 2016, vin: 'JF1VA1A60G9812345',  glyph: 'car',     odo: 112800, unit: 'mi', status: 'ok',        dueIn: 'Timing belt @ 120k',      tags: ['Street', 'Daily'] },
+  { id: 'tacoma',   name: 'Tacoma · Tow',          make: 'Toyota',    model: 'Tacoma TRD Off-Road',          year: 2022, vin: '3TMCZ5AN0NM123456',  glyph: 'truck',   odo: 41200,  unit: 'mi', status: 'ok',        dueIn: 'Next oil @ 45,000 mi',    tags: ['Support', 'Towing'] },
+  { id: 'gooseneck',name: 'Featherlite 24 · Race', make: 'Featherlite', model: '3110 Enclosed 24′',       year: 2018, vin: '4P5GB3020J1001234',  glyph: 'trailer', odo: 0,      unit: 'mi', status: 'due-soon',  dueIn: 'Annual DOT in 18 days',   tags: ['Support', 'Trailer'] },
+  { id: 'gen',      name: 'Paddock Gen · Honda',   make: 'Honda',     model: 'EU7000is',                      year: 2021, vin: 'SDMOEU7000IS0A1234', glyph: 'gen',     odo: 520,    unit: 'hr', status: 'due-soon',  dueIn: 'Oil due in 15 hr',        tags: ['Support', 'Paddock'] },
+  { id: 'rtv',      name: 'Paddock Cart',          make: 'Kubota',    model: 'RTV-X1100C',                    year: 2021, vin: 'KRT1100C0M0012345', glyph: 'atv',     odo: 1280,   unit: 'hr', status: 'ok',        dueIn: 'Service @ 1,500 hr',      tags: ['Support', 'Paddock'] },
+];
+
+const RECENT_ACTIVITY = [
+  { when: '08:42',  who: 'Jack',   what: 'Brake bleed + pad swap',   unit: 'E46 M3 · #142',         vehicleId: 'e46m3',     ago: 'just now',  kind: 'service' },
+  { when: '08:10',  who: 'Miguel', what: 'Logged 18 gal 93 octane',  unit: 'Cayman GT4',            vehicleId: 'gt4',       ago: '30m ago',   kind: 'fuel' },
+  { when: 'Yest.',  who: 'Sara',   what: 'Uploaded insurance PDF',   unit: 'WRX · Daily',           vehicleId: 'wrx',       ago: '1d ago',    kind: 'doc' },
+  { when: 'Yest.',  who: 'Jack',   what: 'RockAuto order received',  unit: 'NAPA #A-8821',          vehicleId: null,        ago: '1d ago',    kind: 'parts' },
+  { when: 'Apr 18', who: 'Jack',   what: 'Diff fluid (finally)',     unit: 'NA Miata · Spec',       vehicleId: 'miata',     ago: '3d ago',    kind: 'service' },
+];
+
+const VEHICLE_TIMELINE = [
+  { date: 'Apr 21, 2026', kind: 'service', source: 'in_house', title: 'Brake bleed + pad swap',     meta: '3.2 hr labor · $312.40 parts · Jack', odo: '112,480 mi', parts: ['Pagid RS29 fr', 'Pagid RS14 rr', 'Motul RBF660 (2L)'], photos: 6, notes: 3, cost: 312.40, status: 'in_progress' },
+  { date: 'Apr 14, 2026', kind: 'fuel',    source: 'upload',   title: 'Fueled up',                  meta: '18.1 gal 93oct · $86.88 · Shell COTA',        odo: '112,410 mi', mpg: '21.3 mpg', cost: 86.88 },
+  { date: 'Apr 05, 2026', kind: 'shop',    source: 'external', title: 'Corner balance + alignment', meta: 'Apex Performance · Invoice #A-4421 · $480',   odo: '112,380 mi', cost: 480 },
+  { date: 'Mar 28, 2026', kind: 'inspect', source: 'in_house', title: 'Post-event walk-around',     meta: 'NASA COTA · 0 findings · Miguel',             odo: '112,380 mi' },
+  { date: 'Mar 14, 2026', kind: 'service', source: 'in_house', title: 'Oil + filter (track)',       meta: '1.2 hr · $148.44 · Jack',                     odo: '111,120 mi', parts: ['Mahle OX154D1 (x1)', 'Motul 300V 10W-40 (7 qt)'], photos: 2, cost: 148.44 },
+  { date: 'Feb 08, 2026', kind: 'shop',    source: 'external', title: 'State inspection',           meta: 'Acme Automotive · PASS · $35',                odo: '110,800 mi', cost: 35 },
+  { date: 'Dec 11, 2025', kind: 'service', source: 'in_house', title: 'Diff fluid swap',            meta: '2.0 hr · $98 · Jack',                         odo: '109,420 mi', parts: ['Redline 75W-140 (2 qt)'], photos: 3, cost: 98 },
+];
+
+const PARTS = [
+  { sku: 'FL-500S',        name: 'Motorcraft Oil Filter',  cat: 'Filter',    qty: 6,  reorder: 3, bin: 'A-12',  price: 7.40,  supplier: 'RockAuto',     lastIn: 'Apr 12', fits: ['E46 M3 · #142'] },
+  { sku: 'T6-5W40-G',      name: 'Rotella T6 5W-40 (gal)', cat: 'Fluid',     qty: 3,  reorder: 2, bin: 'B-04',  price: 29.95, supplier: 'NAPA',         lastIn: 'Mar 30', fits: ['E46 M3 · #142', 'NA Miata · Spec'] },
+  { sku: 'ACT1414',        name: 'Akebono Brake Pads',     cat: 'Brake',     qty: 2,  reorder: 2, bin: 'A-07',  price: 74.22, supplier: 'RockAuto',     lastIn: 'Mar 10', fits: ['E46 M3 · #142', 'Cayman GT4'] },
+  { sku: 'HY-HYDR68',      name: 'Kubota UDT2 Hydraulic',  cat: 'Fluid',     qty: 0,  reorder: 2, bin: 'B-06',  price: 48.00, supplier: 'Kubota Dealer',lastIn: 'Jan 18', fits: ['Paddock Gen · Honda', 'Paddock Cart'] },
+  { sku: 'AF-26',          name: 'Fram Air Filter CA10755',cat: 'Filter',    qty: 5,  reorder: 2, bin: 'A-14',  price: 18.75, supplier: 'Amazon',       lastIn: 'Apr 03', fits: ['Tacoma · Tow', 'WRX · Daily'] },
+  { sku: 'BAT-H7-AGM',     name: 'Group H7 AGM Battery',   cat: 'Electrical',qty: 1,  reorder: 1, bin: 'C-01',  price: 239.00,supplier: 'Interstate',   lastIn: 'Feb 22', fits: ['E46 M3 · #142'] },
+  { sku: 'CP-104',         name: 'NGK Spark Plug LTR6IX',  cat: 'Ignition',  qty: 16, reorder: 8, bin: 'A-22',  price: 9.80,  supplier: 'RockAuto',     lastIn: 'Apr 01', fits: ['WRX · Daily', 'Cayman GT4'] },
+  { sku: 'GR-EP2-T',       name: 'Mystik EP2 Grease Tube', cat: 'Fluid',     qty: 10, reorder: 4, bin: 'B-11',  price: 4.25,  supplier: 'Tractor Supply',lastIn:'Mar 24', fits: ['all'] },
+];
+
+const UNFILED = [
+  { id: 1, when: '9:08 AM',  src: 'email',     from: 'receipts@shell.com',        title: 'Shell Fuel Receipt — $92.10',        body: 'Parsed: 24.8 gal diesel · Junction TX · 04/02',     status: 'needs-review',   suggestion: 'Attach to Shop Truck · Apr 2 fill-up' },
+  { id: 2, when: '8:51 AM',  src: 'upload',    from: 'Miguel (phone)',            title: 'Pump console photo',                 body: 'Odo 87,420 · 13.2 gal · $45.02 · Loaf ’N Jug',  status: 'needs-review',   suggestion: 'Create fuel log → Tacoma' },
+  { id: 3, when: 'Yest.',    src: 'email',     from: 'orders@rockauto.com',       title: 'RockAuto Order #A-8821 shipped',     body: '3 line items · tracking 1Z999AA10123456784',         status: 'needs-review',   suggestion: 'Receive 3 parts to inventory' },
+  { id: 4, when: 'Yest.',    src: 'paperless', from: 'Paperless · tag:insurance', title: 'Insurance certificate 2026.pdf',     body: 'State Farm · policy 892-441-22 · exp Oct 2026',      status: 'needs-review',   suggestion: 'Attach to Shop Truck · Insurance' },
+  { id: 5, when: 'Apr 19',   src: 'paperless', from: 'Paperless · tag:invoice',   title: 'Acme Automotive invoice.pdf',        body: 'State inspection + wiper · $48 total',               status: 'needs-review',   suggestion: 'Attach to Shop Truck · Feb 8 shop visit' },
+  { id: 6, when: 'Apr 18',   src: 'upload',    from: 'Jack (shop PC)',            title: 'hydraulic-job-day3.jpg',             body: 'L3901 · 4th progress photo',                          status: 'needs-review',   suggestion: 'Attach to in-progress job #WO-0142' },
+];
+
+window.FLEET = FLEET;
+window.RECENT_ACTIVITY = RECENT_ACTIVITY;
+window.VEHICLE_TIMELINE = VEHICLE_TIMELINE;
+window.PARTS = PARTS;
+window.UNFILED = UNFILED;
+const REMINDERS_ALL = [
+  { id: 'r-1', vehicleId: 'miata',     name: 'Differential fluid',   type: 'event',    lastDone: 'Dec 11, 2025 · 109,420 mi', interval: 'Every 3 track events', nextDue: '3 events ago', urgency: 'overdue', overdueBy: '3 events',  category: 'drivetrain' },
+  { id: 'r-2', vehicleId: 'e46m3',     name: 'Brake bleed',          type: 'event',    lastDone: 'Feb 02, 2026 · 110,320 mi', interval: 'Every 4 track events', nextDue: 'In 2 events',  urgency: 'due-soon', overdueBy: null,         category: 'brakes' },
+  { id: 'r-3', vehicleId: 'e46m3',     name: 'Engine oil (track)',   type: 'odometer', lastDone: 'Mar 14, 2026 · 111,120 mi', interval: 'Every 2,500 mi',       nextDue: 'In 1,240 mi',  urgency: 'ok',       overdueBy: null,         category: 'engine' },
+  { id: 'r-4', vehicleId: 'gooseneck', name: 'Annual DOT inspection',type: 'date',     lastDone: 'May 09, 2025',             interval: 'Every 12 mo',           nextDue: 'In 18 days',   urgency: 'due-soon', overdueBy: null,         category: 'compliance' },
+  { id: 'r-5', vehicleId: 'gen',       name: 'Oil + filter',         type: 'odometer', lastDone: 'Jan 22, 2026 · 505 hr',     interval: 'Every 100 hr',          nextDue: 'In 15 hr',     urgency: 'due-soon', overdueBy: null,         category: 'engine' },
+  { id: 'r-6', vehicleId: 'wrx',       name: 'Timing belt',          type: 'odometer', lastDone: '—',                         interval: 'Every 100,000 mi',      nextDue: 'In 7,200 mi',  urgency: 'ok',       overdueBy: null,         category: 'engine' },
+  { id: 'r-7', vehicleId: 'gt4',       name: 'PDK fluid service',    type: 'odometer', lastDone: '—',                         interval: 'Every 60,000 mi',       nextDue: 'In 11,580 mi', urgency: 'ok',       overdueBy: null,         category: 'drivetrain' },
+  { id: 'r-8', vehicleId: 'tacoma',    name: 'Engine oil',           type: 'odometer', lastDone: 'Jan 05, 2026 · 38,200 mi', interval: 'Every 5,000 mi',        nextDue: 'In 1,800 mi',  urgency: 'ok',       overdueBy: null,         category: 'engine' },
+  { id: 'r-9', vehicleId: 'miata',     name: 'Tire rotation',        type: 'event',    lastDone: 'Apr 05, 2026 · 3 events',   interval: 'Every 2 track events',  nextDue: 'In 1 event',   urgency: 'due-soon', overdueBy: null,         category: 'tires' },
+  { id: 'r-10', vehicleId: 'e46m3',    name: 'Coolant flush',        type: 'date',     lastDone: 'Jun 2024',                  interval: 'Every 2 yr',            nextDue: 'In 2 months',  urgency: 'ok',       overdueBy: null,         category: 'cooling' },
+  { id: 'r-11', vehicleId: 'wrx',      name: 'Registration · TX',    type: 'date',     lastDone: 'Jan 2026',                  interval: 'Annual',                nextDue: 'In 9 months',  urgency: 'ok',       overdueBy: null,         category: 'compliance' },
+  { id: 'r-12', vehicleId: 'gt4',      name: 'Insurance renewal',    type: 'date',     lastDone: 'Oct 2025',                  interval: 'Annual',                nextDue: 'In 5 months',  urgency: 'ok',       overdueBy: null,         category: 'compliance' },
+];
+window.REMINDERS_ALL = REMINDERS_ALL;
+const EXPENSES = [
+  { id: 'e-1',  vehicleId: 'e46m3',     date: 'Apr 10, 2026', category: 'track_fees',   description: 'NASA TT @ COTA · weekend',      cost: 520,    vendor: 'NASA Texas',           recurring: false },
+  { id: 'e-2',  vehicleId: 'gt4',       date: 'Apr 02, 2026', category: 'insurance',    description: 'Track day insurance',            cost: 295,    vendor: 'Hagerty Events',       recurring: false },
+  { id: 'e-3',  vehicleId: 'wrx',       date: 'Mar 28, 2026', category: 'insurance',    description: 'Policy 892-441-22 · quarterly',  cost: 412,    vendor: 'State Farm',           recurring: true  },
+  { id: 'e-4',  vehicleId: 'gooseneck', date: 'Mar 15, 2026', category: 'registration', description: 'Trailer registration renewal',   cost: 45,     vendor: 'TX DMV',               recurring: true  },
+  { id: 'e-5',  vehicleId: 'e46m3',     date: 'Mar 08, 2026', category: 'tires',        description: 'Hoosier A7 (set of 4)',          cost: 1280,   vendor: 'Hoosier Racing',       recurring: false },
+  { id: 'e-6',  vehicleId: 'miata',     date: 'Mar 02, 2026', category: 'track_fees',   description: 'SCCA Solo · Region 10',          cost: 65,     vendor: 'SCCA',                 recurring: false },
+  { id: 'e-7',  vehicleId: 'tacoma',    date: 'Feb 20, 2026', category: 'fuel',         description: 'COTA haul · round trip',         cost: 186,    vendor: 'Buc-ee\'s',             recurring: false },
+  { id: 'e-8',  vehicleId: 'e46m3',     date: 'Feb 14, 2026', category: 'parking',      description: 'Garage storage · monthly',       cost: 195,    vendor: 'Austin Self Storage',  recurring: true  },
+  { id: 'e-9',  vehicleId: 'gt4',       date: 'Feb 01, 2026', category: 'financing',    description: 'Loan payment · Feb',             cost: 1450,   vendor: 'Porsche Financial',    recurring: true  },
+  { id: 'e-10', vehicleId: 'wrx',       date: 'Jan 22, 2026', category: 'registration', description: 'Annual registration',            cost: 72,     vendor: 'TX DMV',               recurring: true  },
+  { id: 'e-11', vehicleId: 'miata',     date: 'Jan 15, 2026', category: 'tolls',        description: 'COTA tolls · TXtag',             cost: 38,     vendor: 'TXtag',                recurring: false },
+  { id: 'e-12', vehicleId: 'gt4',       date: 'Dec 22, 2025', category: 'tax',          description: 'Personal property tax',          cost: 1820,   vendor: 'Travis County',        recurring: true  },
+];
+window.EXPENSES = EXPENSES;
+
+
+window.INBOX = UNFILED; // back-compat alias for now
+
+
+// ═══════════════════ midfi/screen-fleet.jsx ═══════════════════
+// Fleet overview — primary landing screen
+// Grid cards (winner: A) with dense workshop board as a secondary tab.
+
+function FleetScreen({ onOpenVehicle, onLogTask, onOpenUnfiled }) {
+  const [view, setView] = React.useState('grid'); // grid | board | list
+  const [filter, setFilter] = React.useState('All');
+
+  const statusCounts = {
+    overdue: FLEET.filter(v => v.status === 'overdue').length,
+    dueSoon: FLEET.filter(v => v.status === 'due-soon').length,
+    ok: FLEET.filter(v => v.status === 'ok').length,
+  };
+  const totalSpend = 1842.10;
+  const ytdHours = 28.5;
+
+  const filtered = filter === 'All' ? FLEET : FLEET.filter(v => {
+    if (filter === 'Needs attention') return v.status !== 'ok';
+    if (filter === 'Due this month') return v.status !== 'ok';
+    if (filter === 'Archived') return false;
+    return true;
+  });
+
+  return (
+    <div className="wdw" style={{ display: 'flex', flexDirection: 'column' }}>
+      <WdwTopNav active="Fleet" onCmd={onOpenUnfiled} />
+      <div style={{ flex: 1, overflow: 'auto', padding: '20px 28px 32px' }}>
+        {/* Header row */}
+        <div className="wdw-row" style={{ justifyContent: 'space-between', marginBottom: 18 }}>
+          <div>
+            <div className="wdw-h1">Fleet</div>
+            <div className="wdw-small wdw-muted" style={{ marginTop: 2 }}>{FLEET.length} assets · 3 users · last sync 2 min ago</div>
+          </div>
+          <div className="wdw-row" style={{ gap: 8 }}>
+            <div className="wdw-btn wdw-btn-ghost" onClick={onOpenUnfiled}>
+              <span style={{ color: WDW.orange }}>●</span> Inbox
+              <span className="wdw-chip" style={{ background: WDW.orangeSoft, color: WDW.orange, marginLeft: 4 }}>3</span>
+            </div>
+            <div className="wdw-btn" onClick={onLogTask}>
+              {I.camera} Snap fill-up
+            </div>
+            <div className="wdw-btn wdw-btn-primary" onClick={onLogTask}>
+              {I.plus} Log task
+            </div>
+          </div>
+        </div>
+
+        {/* KPI strip */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.4fr', gap: 12, marginBottom: 18 }}>
+          <div className="wdw-card" style={{ padding: '14px 16px' }}>
+            <div className="wdw-eyebrow">Status</div>
+            <div className="wdw-row" style={{ gap: 18, marginTop: 8, alignItems: 'flex-end' }}>
+              <div><div style={{ fontSize: 22, fontWeight: 600, color: WDW.bad }}>{statusCounts.overdue}</div><div className="wdw-tiny wdw-muted">Overdue</div></div>
+              <div><div style={{ fontSize: 22, fontWeight: 600, color: WDW.warn }}>{statusCounts.dueSoon}</div><div className="wdw-tiny wdw-muted">Due soon</div></div>
+              <div><div style={{ fontSize: 22, fontWeight: 600, color: WDW.good }}>{statusCounts.ok}</div><div className="wdw-tiny wdw-muted">On track</div></div>
+            </div>
+          </div>
+          <div className="wdw-card" style={{ padding: '14px 16px' }}>
+            <div className="wdw-eyebrow">Open jobs</div>
+            <div className="wdw-mono" style={{ fontSize: 22, fontWeight: 500, marginTop: 6 }}>3</div>
+            <div className="wdw-tiny wdw-muted" style={{ marginTop: 2 }}>In-house · 1 paused · 0 waiting parts</div>
+          </div>
+          <div className="wdw-card" style={{ padding: '14px 16px' }}>
+            <div className="wdw-eyebrow">Upcoming</div>
+            <div className="wdw-col" style={{ gap: 4, marginTop: 6 }}>
+              <div className="wdw-row wdw-small"><span className="wdw-dot" style={{ background: WDW.bad }} /> Miata — diff fluid <span className="wdw-muted wdw-mono" style={{ marginLeft: 'auto' }}>−3 events</span></div>
+              <div className="wdw-row wdw-small"><span className="wdw-dot" style={{ background: WDW.warn }} /> Featherlite — DOT inspection <span className="wdw-muted wdw-mono" style={{ marginLeft: 'auto' }}>18 d</span></div>
+              <div className="wdw-row wdw-small"><span className="wdw-dot" style={{ background: WDW.warn }} /> E46 M3 — brake bleed <span className="wdw-muted wdw-mono" style={{ marginLeft: 'auto' }}>2 events</span></div>
+            </div>
+          </div>
+        </div>
+
+        {/* Filters + view switcher */}
+        <div className="wdw-row" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
+          <div className="wdw-row" style={{ gap: 6 }}>
+            {['All', 'Needs attention', 'Due this month', 'Archived'].map(f => (
+              <div key={f} onClick={() => setFilter(f)} className="wdw-click" style={{
+                padding: '4px 10px', borderRadius: 4, fontSize: 12, fontWeight: 500,
+                background: filter === f ? WDW.ink : 'transparent',
+                color: filter === f ? '#fff' : WDW.ink3,
+                border: `1px solid ${filter === f ? WDW.ink : WDW.line}`,
+              }}>{f}</div>
+            ))}
+          </div>
+          <div className="wdw-row" style={{ gap: 2, padding: 2, background: WDW.paperAlt, borderRadius: 5 }}>
+            {[['grid', 'Grid'], ['board', 'Board'], ['list', 'List']].map(([k, label]) => (
+              <div key={k} onClick={() => setView(k)} className="wdw-click" style={{
+                padding: '3px 10px', borderRadius: 3, fontSize: 11.5, fontWeight: 500,
+                background: view === k ? WDW.card : 'transparent',
+                color: view === k ? WDW.ink : WDW.ink3,
+                boxShadow: view === k ? '0 1px 2px rgba(0,0,0,0.04)' : 'none',
+              }}>{label}</div>
+            ))}
+          </div>
+        </div>
+
+        {/* Bodies */}
+        {view === 'grid' && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+            {filtered.map(v => <FleetCard key={v.id} v={v} onOpen={() => onOpenVehicle(v.id)} />)}
+          </div>
+        )}
+        {view === 'board' && <FleetBoard vehicles={filtered} onOpen={onOpenVehicle} />}
+        {view === 'list' && <FleetList vehicles={filtered} onOpen={onOpenVehicle} />}
+
+        {/* Activity feed */}
+        <div style={{ marginTop: 24, display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 16 }}>
+          <div className="wdw-card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div style={{ padding: '10px 14px', borderBottom: `1px solid ${WDW.line}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div className="wdw-h2">Recent activity</div>
+              <div className="wdw-tiny wdw-muted">Today · Apr 21, 2026</div>
+            </div>
+            {RECENT_ACTIVITY.map((a, i) => (
+              <div key={i} className="wdw-click" onClick={() => a.vehicleId && onOpenVehicle(a.vehicleId)} style={{ padding: '10px 14px', borderTop: i === 0 ? 'none' : `1px solid ${WDW.line}`, display: 'grid', gridTemplateColumns: '52px 1fr auto', alignItems: 'center', gap: 10 }}>
+                <div className="wdw-mono wdw-tiny wdw-muted">{a.when}</div>
+                <div>
+                  <div className="wdw-small"><span style={{ fontWeight: 500 }}>{a.who}</span> · {a.what}</div>
+                  <div className="wdw-tiny wdw-muted" style={{ marginTop: 1 }}>{a.unit}</div>
+                </div>
+                <div className="wdw-tiny wdw-muted">{a.ago}</div>
+              </div>
+            ))}
+          </div>
+          <div className="wdw-card" style={{ padding: '14px 16px' }}>
+            <div className="wdw-h2" style={{ marginBottom: 8 }}>Unfiled attachments</div>
+            <div className="wdw-small wdw-muted" style={{ marginBottom: 12 }}>Photos, receipt emails, and scanned PDFs that need routing.</div>
+            {INBOX.slice(0, 3).map(m => (
+              <div key={m.id} className="wdw-click" onClick={onOpenUnfiled} style={{ padding: '10px 0', borderTop: `1px solid ${WDW.line}`, display: 'flex', gap: 8 }}>
+                <div style={{ width: 24, height: 24, borderRadius: 4, background: WDW.paperAlt, color: WDW.ink3, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {m.src === 'email' && '✉'}
+                  {m.src === 'upload' && I.camera}
+                  {m.src === 'paperless' && I.doc}
+                  {m.src === 'vendor_api' && '→'}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="wdw-small" style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title}</div>
+                  <div className="wdw-tiny wdw-muted" style={{ marginTop: 1 }}>{m.suggestion || m.body}</div>
+                </div>
+              </div>
+            ))}
+            <div className="wdw-btn wdw-btn-sm wdw-btn-ghost" onClick={onOpenUnfiled} style={{ marginTop: 10 }}>Open unfiled {I.arrowR}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// — Card variation —
+function FleetCard({ v, onOpen }) {
+  const statusLabel = { ok: 'On track', 'due-soon': 'Due soon', overdue: 'Overdue' }[v.status];
+  const statusColor = { ok: WDW.good, 'due-soon': WDW.warn, overdue: WDW.bad }[v.status];
+  return (
+    <div className="wdw-card wdw-click" onClick={onOpen} style={{ overflow: 'hidden' }}>
+      <PhotoHolder w="100%" h={96} glyph={v.glyph} />
+      <div style={{ padding: '10px 12px 12px' }}>
+        <div className="wdw-row" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
+          <div className="wdw-tiny wdw-muted wdw-mono">{v.year} {v.make}</div>
+          </div>
+        <div className="wdw-h2" style={{ fontSize: 14, marginBottom: 2 }}>{v.name}</div>
+        <div className="wdw-tiny wdw-muted" style={{ marginBottom: 10 }}>{v.model}</div>
+        <div className="wdw-divider" style={{ marginBottom: 8 }} />
+        <div className="wdw-row" style={{ justifyContent: 'space-between' }}>
+          <div>
+            <div className="wdw-tiny wdw-muted">Reading</div>
+            <div className="wdw-mono" style={{ fontSize: 13 }}>{v.odo.toLocaleString()} <span className="wdw-tiny wdw-muted">{v.unit}</span></div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div className="wdw-tiny wdw-muted">Status</div>
+            <div className="wdw-row" style={{ gap: 4, justifyContent: 'flex-end' }}>
+              <span className="wdw-dot" style={{ background: statusColor }} />
+              <span className="wdw-small" style={{ color: statusColor, fontWeight: 500 }}>{statusLabel}</span>
+            </div>
+          </div>
+        </div>
+        <div className="wdw-tiny wdw-muted" style={{ marginTop: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.dueIn}</div>
+      </div>
+    </div>
+  );
+}
+
+// — Board variation —
+function FleetBoard({ vehicles, onOpen }) {
+  const columns = [
+    { key: 'overdue',  title: 'Overdue',      color: WDW.bad },
+    { key: 'due-soon', title: 'Due soon',     color: WDW.warn },
+    { key: 'ok',       title: 'On track',     color: WDW.good },
+    { key: 'idle',     title: 'Idle / stored', color: WDW.muted },
+  ];
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+      {columns.map(col => {
+        const items = vehicles.filter(v => v.status === col.key);
+        return (
+          <div key={col.key} className="wdw-card-soft" style={{ padding: 10, minHeight: 280 }}>
+            <div className="wdw-row" style={{ marginBottom: 8 }}>
+              <span className="wdw-dot" style={{ background: col.color }} />
+              <div className="wdw-h2" style={{ fontSize: 12.5 }}>{col.title}</div>
+              <div className="wdw-tiny wdw-muted" style={{ marginLeft: 'auto' }}>{items.length}</div>
+            </div>
+            <div className="wdw-col" style={{ gap: 6 }}>
+              {items.map(v => (
+                <div key={v.id} className="wdw-card wdw-click" onClick={() => onOpen(v.id)} style={{ padding: '8px 10px' }}>
+                  <div className="wdw-small" style={{ fontWeight: 500 }}>{v.name}</div>
+                  <div className="wdw-tiny wdw-muted" style={{ marginTop: 1 }}>{v.dueIn}</div>
+                </div>
+              ))}
+              {items.length === 0 && <div className="wdw-tiny wdw-muted" style={{ padding: 8 }}>—</div>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// — List variation —
+function FleetList({ vehicles, onOpen }) {
+  return (
+    <div className="wdw-card" style={{ overflow: 'hidden' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1fr 1fr 1fr 1fr', padding: '8px 14px', borderBottom: `1px solid ${WDW.line}`, background: WDW.paper }}>
+        {['', 'Asset', 'Make · Model', 'Reading', 'Status', 'Next due'].map(h => (
+          <div key={h} className="wdw-eyebrow">{h}</div>
+        ))}
+      </div>
+      {vehicles.map((v, i) => (
+        <div key={v.id} className="wdw-click" onClick={() => onOpen(v.id)} style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1fr 1fr 1fr 1fr 1fr', padding: '10px 14px', borderTop: i === 0 ? 'none' : `1px solid ${WDW.line}`, alignItems: 'center', gap: 8 }}>
+          <VGlyph type={v.glyph} size={24} color={WDW.ink3} />
+          <div>
+            <div className="wdw-small" style={{ fontWeight: 500 }}>{v.name}</div>
+            <div className="wdw-tiny wdw-muted">{v.vin.slice(-8)}</div>
+          </div>
+          <div className="wdw-small">{v.year} {v.make}<br /><span className="wdw-tiny wdw-muted">{v.model}</span></div>
+          <div className="wdw-mono wdw-small">{v.odo.toLocaleString()} <span className="wdw-tiny wdw-muted">{v.unit}</span></div>
+          <div className="wdw-row" style={{ gap: 4 }}>
+            <StatusDot status={v.status} />
+            <span className="wdw-small">{{ ok: 'On track', 'due-soon': 'Due soon', overdue: 'Overdue' }[v.status]}</span>
+          </div>
+          <div className="wdw-small wdw-muted">{v.dueIn}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+window.FleetScreen = FleetScreen;
+
+
+// ═══════════════════ midfi/screen-vehicle.jsx ═══════════════════
+// Vehicle detail — timeline-forward (winner: B)
+// Left: passport (identity, photos, stats). Right: scrollable event timeline.
+
+function VehicleScreen({ vehicleId, onBack, onLogTask, onOpenDoc }) {
+  const v = FLEET.find(x => x.id === vehicleId) || FLEET[0];
+  const [tab, setTab] = React.useState('timeline'); // timeline | schedule | parts | docs | costs
+
+  const spendByMonth = [120, 45, 240, 80, 0, 180, 210, 95, 60, 150, 320, 84];
+  const maxSpend = Math.max(...spendByMonth);
+
+  return (
+    <div className="wdw" style={{ display: 'flex', flexDirection: 'column' }}>
+      <WdwTopNav active="Fleet" />
+      {/* breadcrumb + actions */}
+      <div style={{ padding: '14px 28px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div className="wdw-row wdw-small wdw-muted">
+          <span onClick={onBack} className="wdw-click" style={{ color: WDW.teal, fontWeight: 500 }}>Fleet</span>
+          <span>›</span>
+          <span>{v.name}</span>
+        </div>
+        <div className="wdw-row" style={{ gap: 8 }}>
+          <div className="wdw-btn wdw-btn-sm">{I.doc} Export history</div>
+          <div className="wdw-btn wdw-btn-sm">{I.camera} Photo</div>
+          <div className="wdw-btn wdw-btn-primary wdw-btn-sm" onClick={onLogTask}>{I.plus} Log task</div>
+        </div>
+      </div>
+
+      <div style={{ flex: 1, overflow: 'auto', padding: '18px 28px 32px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 20 }}>
+          {/* Passport */}
+          <div className="wdw-col" style={{ gap: 12 }}>
+            <div className="wdw-card" style={{ overflow: 'hidden' }}>
+              <PhotoHolder w="100%" h={170} glyph={v.glyph} label="primary photo" />
+              <div style={{ padding: '12px 14px 14px' }}>
+                <div className="wdw-eyebrow">{v.year} · {v.make}</div>
+                <div style={{ fontSize: 19, fontWeight: 600, letterSpacing: -0.2, marginTop: 2 }}>{v.name}</div>
+                <div className="wdw-small wdw-muted">{v.model}</div>
+                <div className="wdw-row" style={{ gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                  {v.tags.map(t => <div key={t} className="wdw-pill">{t}</div>)}
+                </div>
+                <div className="wdw-divider" style={{ margin: '12px 0' }} />
+                <IdRow label="VIN"       value={v.vin}           mono />
+                <IdRow label="Reading"   value={`${v.odo.toLocaleString()} ${v.unit}`} mono />
+                <IdRow label="Plate"     value="TX · WDW-421" />
+                <IdRow label="Location"  value="Main shop bay 2" />
+                <IdRow label="Insured to" value="Oct 2026" />
+              </div>
+            </div>
+
+            <div className="wdw-card" style={{ padding: '12px 14px' }}>
+              <div className="wdw-h2" style={{ fontSize: 13, marginBottom: 8 }}>Lifetime</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <Stat label="Spend"    value="$8,214"  sub="parts + labor + fuel" />
+                <Stat label="Services" value="41"       sub="since 2019" />
+                <Stat label="MPG avg"  value="14.1"    sub="last 12 fill-ups" />
+                <Stat label="Uptime"   value="98%"     sub="0 breakdowns" />
+              </div>
+            </div>
+
+            <div className="wdw-card" style={{ padding: '12px 14px' }}>
+              <div className="wdw-row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
+                <div className="wdw-h2" style={{ fontSize: 13 }}>Spend · last 12 mo</div>
+                <div className="wdw-tiny wdw-muted wdw-mono">$1,684</div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 48 }}>
+                {spendByMonth.map((s, i) => (
+                  <div key={i} style={{
+                    flex: 1, height: `${maxSpend ? (s / maxSpend * 100) : 0}%`,
+                    background: i === spendByMonth.length - 1 ? WDW.orange : WDW.teal, opacity: 0.85,
+                    borderRadius: '2px 2px 0 0', minHeight: s > 0 ? 2 : 0,
+                  }} />
+                ))}
+              </div>
+              <div className="wdw-row wdw-tiny wdw-muted" style={{ marginTop: 4, justifyContent: 'space-between' }}>
+                <span>May ’25</span><span>Apr ’26</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Right column */}
+          <div className="wdw-col" style={{ gap: 12 }}>
+            {/* Tab row */}
+            <div className="wdw-row" style={{ gap: 2, borderBottom: `1px solid ${WDW.line}` }}>
+              {[
+                ['timeline', 'Timeline', 41],
+                ['schedule', 'Schedule', 6],
+                ['parts', 'Parts used', 18],
+                ['docs', 'Documents', 9],
+                ['costs', 'Costs', null],
+              ].map(([k, label, n]) => (
+                <div key={k} onClick={() => setTab(k)} className="wdw-click" style={{
+                  padding: '8px 14px', fontSize: 13, fontWeight: 500,
+                  color: tab === k ? WDW.ink : WDW.ink3,
+                  borderBottom: tab === k ? `2px solid ${WDW.teal}` : '2px solid transparent',
+                  marginBottom: -1,
+                }}>
+                  {label}
+                  {n !== null && <span className="wdw-tiny wdw-muted" style={{ marginLeft: 6 }}>{n}</span>}
+                </div>
+              ))}
+            </div>
+
+            {tab === 'timeline' && <Timeline />}
+            {tab === 'schedule' && <SchedulePanel />}
+            {tab === 'parts' && <PartsUsedPanel />}
+            {tab === 'docs' && <DocsPanel onOpenDoc={onOpenDoc} />}
+            {tab === 'costs' && <CostsPanel />}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IdRow({ label, value, mono }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '78px 1fr', fontSize: 12, padding: '3px 0' }}>
+      <div className="wdw-muted">{label}</div>
+      <div className={mono ? 'wdw-mono' : ''} style={{ fontSize: mono ? 11.5 : 12 }}>{value}</div>
+    </div>
+  );
+}
+
+function Stat({ label, value, sub }) {
+  return (
+    <div>
+      <div className="wdw-tiny wdw-muted" style={{ textTransform: 'uppercase', letterSpacing: 0.4, fontSize: 10 }}>{label}</div>
+      <div className="wdw-mono" style={{ fontSize: 17, fontWeight: 500, marginTop: 2 }}>{value}</div>
+      <div className="wdw-tiny wdw-muted">{sub}</div>
+    </div>
+  );
+}
+
+function Timeline() {
+  const kindStyle = {
+    service:  { color: WDW.teal,   label: 'Service', bg: WDW.tealSoft },
+    fuel:     { color: WDW.orange, label: 'Fuel',    bg: WDW.orangeSoft },
+    inspect:  { color: WDW.ink3,   label: 'Inspect', bg: WDW.paperAlt },
+    shop:     { color: WDW.warn,   label: 'Shop',    bg: '#fbefd8' },
+  };
+  return (
+    <div className="wdw-card" style={{ padding: '4px 0' }}>
+      {VEHICLE_TIMELINE.map((e, i) => {
+        const st = kindStyle[e.kind];
+        return (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '108px 12px 1fr', padding: '14px 14px', borderTop: i === 0 ? 'none' : `1px solid ${WDW.line}`, gap: 12 }}>
+            <div>
+              <div className="wdw-small wdw-mono" style={{ fontWeight: 500 }}>{e.date}</div>
+              <div className="wdw-tiny wdw-muted wdw-mono" style={{ marginTop: 2 }}>{e.odo}</div>
+            </div>
+            <div style={{ position: 'relative' }}>
+              <div style={{ position: 'absolute', left: 4, top: 5, width: 4, height: 4, borderRadius: 2, background: st.color }} />
+              <div style={{ position: 'absolute', left: 6, top: 12, bottom: -14, width: 1, background: WDW.line }} />
+            </div>
+            <div>
+              <div className="wdw-row" style={{ gap: 6, marginBottom: 2 }}>
+                <span className="wdw-chip" style={{ background: st.bg, color: st.color }}>{st.label}</span>
+                {e.cost && <span className="wdw-tiny wdw-muted wdw-mono">${e.cost.toFixed(2)}</span>}
+                {e.mpg && <span className="wdw-tiny wdw-muted wdw-mono">· {e.mpg}</span>}
+              </div>
+              <div className="wdw-small" style={{ fontWeight: 500 }}>{e.title}</div>
+              <div className="wdw-tiny wdw-muted" style={{ marginTop: 2 }}>{e.meta}</div>
+              {e.parts && (
+                <div className="wdw-row" style={{ gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+                  {e.parts.map(p => <span key={p} className="wdw-pill wdw-mono" style={{ fontSize: 10 }}>{p}</span>)}
+                </div>
+              )}
+              {e.photos && (
+                <div className="wdw-row" style={{ gap: 4, marginTop: 8 }}>
+                  {Array.from({ length: e.photos }).map((_, j) => (
+                    <div key={j} className="wdw-photo" style={{ width: 54, height: 40 }}></div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SchedulePanel() {
+  const items = [
+    { due: '−40 hr',  title: 'Hydraulic fluid + filter',  interval: '400 hr / 2 yr', status: 'overdue',  next: '2,100 hr' },
+    { due: '320 mi',  title: 'Engine oil + filter',       interval: '5,000 mi',       status: 'due-soon', next: '87,740 mi' },
+    { due: '8 mo',    title: 'Cabin air filter',          interval: '12 mo',           status: 'ok',       next: 'Dec 2026' },
+    { due: '14 mo',   title: 'Coolant service',           interval: '60,000 mi',       status: 'ok',       next: '99,000 mi' },
+    { due: '2.1 yr',  title: 'Timing belt inspection',    interval: '3 yr',            status: 'ok',       next: 'Jun 2028' },
+    { due: '—',       title: 'Annual safety inspection',  interval: 'State · 12 mo',   status: 'ok',       next: 'Feb 2027' },
+  ];
+  return (
+    <div className="wdw-card" style={{ padding: 0, overflow: 'hidden' }}>
+      {items.map((it, i) => (
+        <div key={i} style={{ display: 'grid', gridTemplateColumns: '90px 1fr 1fr auto', padding: '12px 14px', borderTop: i === 0 ? 'none' : `1px solid ${WDW.line}`, alignItems: 'center', gap: 10 }}>
+          <div className="wdw-mono wdw-small" style={{ color: { overdue: WDW.bad, 'due-soon': WDW.warn, ok: WDW.ink3 }[it.status], fontWeight: 500 }}>{it.due}</div>
+          <div>
+            <div className="wdw-small" style={{ fontWeight: 500 }}>{it.title}</div>
+            <div className="wdw-tiny wdw-muted">{it.interval}</div>
+          </div>
+          <div className="wdw-tiny wdw-muted">Next: <span className="wdw-mono">{it.next}</span></div>
+          <div className="wdw-btn wdw-btn-sm">Log now</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PartsUsedPanel() {
+  const rows = [
+    { sku: 'FL-500S',  name: 'Motorcraft Oil Filter',   qty: 7,  last: 'Apr 21, 2026', cost: '$51.80' },
+    { sku: 'T6-5W40-G',name: 'Rotella T6 5W-40 (gal)',  qty: 9,  last: 'Apr 21, 2026', cost: '$269.55' },
+    { sku: 'ACT1414',  name: 'Akebono Brake Pads',      qty: 2,  last: 'Mar 14, 2026', cost: '$148.44' },
+    { sku: 'BAT-H7',   name: 'Group H7 AGM Battery',    qty: 1,  last: 'Feb 22, 2025', cost: '$239.00' },
+  ];
+  return (
+    <div className="wdw-card" style={{ padding: 0, overflow: 'hidden' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '110px 2fr 60px 1fr 90px', padding: '8px 14px', borderBottom: `1px solid ${WDW.line}`, background: WDW.paper }}>
+        {['SKU', 'Part', 'Qty', 'Last used', 'Total'].map(h => <div key={h} className="wdw-eyebrow">{h}</div>)}
+      </div>
+      {rows.map(r => (
+        <div key={r.sku} style={{ display: 'grid', gridTemplateColumns: '110px 2fr 60px 1fr 90px', padding: '10px 14px', borderTop: `1px solid ${WDW.line}`, alignItems: 'center' }}>
+          <div className="wdw-mono wdw-tiny">{r.sku}</div>
+          <div className="wdw-small">{r.name}</div>
+          <div className="wdw-mono wdw-small">{r.qty}</div>
+          <div className="wdw-small wdw-muted">{r.last}</div>
+          <div className="wdw-mono wdw-small" style={{ textAlign: 'right' }}>{r.cost}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DocsPanel({ onOpenDoc }) {
+  const docs = [
+    { name: 'Owner\u2019s Manual.pdf',        size: '12.4 MB', tag: 'OEM',      when: 'Apr 2019' },
+    { name: 'Factory Warranty.pdf',           size: '1.1 MB',  tag: 'Warranty', when: 'Apr 2019' },
+    { name: 'Insurance Certificate 2026.pdf', size: '240 KB',  tag: 'Insurance',when: 'Oct 2025' },
+    { name: 'Texas Registration 2026.pdf',    size: '180 KB',  tag: 'Reg.',     when: 'Jan 2026' },
+    { name: 'RockAuto Order A-8821 receipt',  size: '92 KB',   tag: 'Receipt',  when: 'Apr 2026' },
+    { name: 'Acme Automotive invoice',        size: '310 KB',  tag: 'Shop',     when: 'Feb 2026' },
+  ];
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+      {docs.map(d => (
+        <div key={d.name} className="wdw-card wdw-click" onClick={onOpenDoc} style={{ padding: 12 }}>
+          <div className="wdw-row" style={{ gap: 8, alignItems: 'flex-start' }}>
+            <div style={{ width: 34, height: 42, background: WDW.paperAlt, border: `1px solid ${WDW.line}`, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', color: WDW.ink3 }}>{I.doc}</div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div className="wdw-small" style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</div>
+              <div className="wdw-tiny wdw-muted" style={{ marginTop: 2 }}>{d.size} · {d.when}</div>
+              <div className="wdw-chip" style={{ marginTop: 6 }}>{d.tag}</div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CostsPanel() {
+  const cats = [
+    { label: 'Parts',  amt: 2980, pct: 36, color: WDW.teal },
+    { label: 'Fuel',   amt: 3410, pct: 42, color: WDW.orange },
+    { label: 'Shops',  amt: 1140, pct: 14, color: WDW.ink3 },
+    { label: 'Tires',  amt: 684,  pct: 8,  color: WDW.muted },
+  ];
+  return (
+    <div className="wdw-card" style={{ padding: 16 }}>
+      <div className="wdw-row" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
+        <div>
+          <div className="wdw-eyebrow">Total spend</div>
+          <div className="wdw-mono" style={{ fontSize: 24, fontWeight: 500 }}>$8,214.00</div>
+          <div className="wdw-tiny wdw-muted">Since Apr 2019 · $0.094 per mile</div>
+        </div>
+        <div className="wdw-row" style={{ gap: 6 }}>
+          <div className="wdw-btn wdw-btn-sm">All time</div>
+          <div className="wdw-btn wdw-btn-sm">12 mo</div>
+          <div className="wdw-btn wdw-btn-sm">YTD</div>
+        </div>
+      </div>
+      <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', marginBottom: 14 }}>
+        {cats.map(c => (
+          <div key={c.label} style={{ flex: c.pct, background: c.color }} />
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+        {cats.map(c => (
+          <div key={c.label}>
+            <div className="wdw-row" style={{ gap: 6, marginBottom: 2 }}>
+              <span className="wdw-dot" style={{ background: c.color }} />
+              <span className="wdw-small">{c.label}</span>
+            </div>
+            <div className="wdw-mono" style={{ fontSize: 16, fontWeight: 500 }}>${c.amt.toLocaleString()}</div>
+            <div className="wdw-tiny wdw-muted">{c.pct}% of total</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+window.VehicleScreen = VehicleScreen;
+
+
+// ═══════════════════ midfi/screen-log.jsx ═══════════════════
+// Log task — form primary (winner: A), with chat-based AI alt (winner: D)
+
+function LogTaskScreen({ onClose, onSaved, prefillVehicleId }) {
+  const [mode, setMode] = React.useState('form'); // form | chat | template
+  const [vehicleId, setVehicleId] = React.useState(prefillVehicleId || 'f250');
+  const v = FLEET.find(x => x.id === vehicleId) || FLEET[0];
+
+  return (
+    <div className="wdw" style={{ background: 'rgba(21,24,26,0.55)', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{
+        width: 'min(1120px, 96%)', height: 'min(740px, 92%)',
+        background: WDW.paper, borderRadius: 10,
+        boxShadow: '0 24px 60px rgba(0,0,0,0.28)', display: 'flex', flexDirection: 'column',
+        border: `1px solid ${WDW.line}`,
+      }}>
+        {/* header */}
+        <div style={{ padding: '14px 18px', borderBottom: `1px solid ${WDW.line}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="wdw-h2">Log a task</div>
+          <span className="wdw-muted">·</span>
+          <select value={vehicleId} onChange={e => setVehicleId(e.target.value)} className="wdw-input" style={{ width: 220, height: 26, fontSize: 12 }}>
+            {FLEET.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+          </select>
+          <div style={{ flex: 1 }} />
+          <div className="wdw-row" style={{ gap: 2, padding: 2, background: WDW.paperAlt, borderRadius: 5 }}>
+            {[['form', 'Form'], ['chat', 'AI chat'], ['template', 'From template']].map(([k, label]) => (
+              <div key={k} onClick={() => setMode(k)} className="wdw-click" style={{
+                padding: '3px 10px', borderRadius: 3, fontSize: 11.5, fontWeight: 500,
+                background: mode === k ? WDW.card : 'transparent',
+                color: mode === k ? WDW.ink : WDW.ink3,
+              }}>{label}</div>
+            ))}
+          </div>
+          <div className="wdw-btn wdw-btn-sm wdw-btn-ghost" onClick={onClose} style={{ width: 28, padding: 0 }}>{I.x}</div>
+        </div>
+
+        <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
+          {mode === 'form' && <FormMode v={v} onSaved={onSaved} />}
+          {mode === 'chat' && <ChatMode v={v} onSaved={onSaved} />}
+          {mode === 'template' && <TemplateMode v={v} onUseTemplate={() => setMode('form')} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FormMode({ v, onSaved }) {
+  const [parts, setParts] = React.useState([
+    { sku: 'FL-500S',   name: 'Motorcraft Oil Filter',    qty: 1, unit: 7.40 },
+    { sku: 'T6-5W40-G', name: 'Rotella T6 5W-40 (gal)',    qty: 3.25, unit: 29.95 },
+  ]);
+  const [photos] = React.useState(['drain.jpg', 'filter.jpg']);
+  const partsTotal = parts.reduce((s, p) => s + p.qty * p.unit, 0);
+  const laborHours = 0.8;
+  const laborRate = 45;
+  const laborTotal = laborHours * laborRate;
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', flex: 1 }}>
+      {/* left — details */}
+      <div style={{ padding: 20, overflow: 'auto' }}>
+        <Field label="Task type">
+          <div className="wdw-row" style={{ gap: 6, flexWrap: 'wrap' }}>
+            {['Oil change', 'Service', 'Repair', 'Inspection', 'Fuel', 'Modification', 'Other'].map((t, i) => (
+              <div key={t} className="wdw-click" style={{
+                padding: '5px 12px', borderRadius: 16, fontSize: 12,
+                background: i === 0 ? WDW.ink : WDW.card,
+                color: i === 0 ? '#fff' : WDW.ink3,
+                border: `1px solid ${i === 0 ? WDW.ink : WDW.line}`,
+              }}>{t}</div>
+            ))}
+          </div>
+        </Field>
+
+        <Field label="Title">
+          <input className="wdw-input" defaultValue="Engine oil & filter service" />
+        </Field>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+          <Field label="Date">
+            <input className="wdw-input" defaultValue="Apr 21, 2026" />
+          </Field>
+          <Field label="Odometer / hours">
+            <input className="wdw-input wdw-mono" defaultValue={`${v.odo.toLocaleString()} ${v.unit}`} />
+          </Field>
+          <Field label="Performed by">
+            <select className="wdw-input">
+              <option>Jack (me)</option>
+              <option>Miguel</option>
+              <option>Sara</option>
+              <option>Outside shop…</option>
+            </select>
+          </Field>
+        </div>
+
+        <Field label="Notes" sub="Markdown-friendly · AI will extract part numbers automatically">
+          <textarea className="wdw-input" style={{ height: 72, padding: '8px 10px', lineHeight: 1.4 }} defaultValue={`Hot oil drain, torque plug to 25 ft-lb. Slight weep at filter base — cleaned mating surface and double-checked gasket. Oil analysis sample pulled (kit #14).`} />
+        </Field>
+
+        <Field label={`Parts used · $${partsTotal.toFixed(2)}`} right={<div className="wdw-btn wdw-btn-sm"><span>{I.plus}</span> Add part</div>}>
+          <div className="wdw-card-soft" style={{ padding: 0 }}>
+            {parts.map((p, i) => (
+              <div key={p.sku} style={{ display: 'grid', gridTemplateColumns: '100px 1fr 68px 80px 80px 26px', alignItems: 'center', padding: '8px 10px', borderTop: i === 0 ? 'none' : `1px solid ${WDW.line}`, gap: 6 }}>
+                <div className="wdw-mono wdw-tiny">{p.sku}</div>
+                <div className="wdw-small">{p.name}</div>
+                <input className="wdw-input wdw-mono" defaultValue={p.qty} style={{ height: 24, fontSize: 11.5 }} />
+                <div className="wdw-mono wdw-tiny wdw-muted" style={{ textAlign: 'right' }}>@ ${p.unit.toFixed(2)}</div>
+                <div className="wdw-mono wdw-small" style={{ textAlign: 'right' }}>${(p.qty * p.unit).toFixed(2)}</div>
+                <div className="wdw-btn wdw-btn-sm wdw-btn-ghost" style={{ padding: 0, width: 20, height: 20 }}>{I.x}</div>
+              </div>
+            ))}
+            <div style={{ padding: '8px 10px', borderTop: `1px solid ${WDW.line}`, background: WDW.paper, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ color: WDW.muted }}>{I.search}</span>
+              <input placeholder="Search parts inventory or paste a receipt line…" className="wdw-input" style={{ border: 'none', background: 'transparent', height: 22, padding: 0, fontSize: 12.5 }} />
+            </div>
+          </div>
+        </Field>
+
+        <Field label="Labor">
+          <div className="wdw-row" style={{ gap: 10 }}>
+            <div className="wdw-col" style={{ flex: 1 }}>
+              <div className="wdw-tiny wdw-muted">Hours</div>
+              <input className="wdw-input wdw-mono" defaultValue={laborHours.toFixed(1)} />
+            </div>
+            <div className="wdw-col" style={{ flex: 1 }}>
+              <div className="wdw-tiny wdw-muted">Rate / hr</div>
+              <input className="wdw-input wdw-mono" defaultValue={`$${laborRate}`} />
+            </div>
+            <div className="wdw-col" style={{ flex: 1 }}>
+              <div className="wdw-tiny wdw-muted">Labor total</div>
+              <div className="wdw-mono" style={{ fontSize: 14, fontWeight: 500, paddingTop: 5 }}>${laborTotal.toFixed(2)}</div>
+            </div>
+          </div>
+        </Field>
+      </div>
+
+      {/* right — side rail */}
+      <div style={{ background: WDW.card, borderLeft: `1px solid ${WDW.line}`, padding: 20, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div>
+          <div className="wdw-eyebrow">Copy from last</div>
+          <div className="wdw-card wdw-click" style={{ padding: 10, marginTop: 6 }}>
+            <div className="wdw-small" style={{ fontWeight: 500 }}>Oil & filter service — Dec 11</div>
+            <div className="wdw-tiny wdw-muted">80,420 mi · 3 parts · 0.8 hr</div>
+            <div className="wdw-btn wdw-btn-sm" style={{ marginTop: 8 }}>Duplicate this task</div>
+          </div>
+        </div>
+
+        <div>
+          <div className="wdw-eyebrow">Photos & attachments</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginTop: 6 }}>
+            {photos.map((p, i) => <div key={i} className="wdw-photo" style={{ height: 60 }}>{p}</div>)}
+            <div className="wdw-card wdw-click" style={{ height: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', color: WDW.ink3, borderStyle: 'dashed' }}>
+              {I.plus}
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div className="wdw-eyebrow">Schedule next</div>
+          <div className="wdw-row" style={{ gap: 6, marginTop: 6 }}>
+            <div className="wdw-pill wdw-pill-teal">+5,000 mi</div>
+            <div className="wdw-pill">+6 mo</div>
+            <div className="wdw-pill">Custom…</div>
+          </div>
+          <div className="wdw-tiny wdw-muted" style={{ marginTop: 6 }}>Next due at <span className="wdw-mono">92,420 mi</span> · Oct 21, 2026</div>
+        </div>
+
+        <div>
+          <div className="wdw-eyebrow">AI extracted</div>
+          <div className="wdw-card-soft" style={{ padding: 10, marginTop: 6 }}>
+            <div className="wdw-tiny wdw-muted">From your notes:</div>
+            <div className="wdw-row wdw-small" style={{ marginTop: 4, gap: 6 }}><span style={{ color: WDW.good }}>{I.check}</span> Torque spec <span className="wdw-mono">25 ft-lb</span></div>
+            <div className="wdw-row wdw-small" style={{ gap: 6 }}><span style={{ color: WDW.good }}>{I.check}</span> Oil analysis kit <span className="wdw-mono">#14</span> tagged</div>
+            <div className="wdw-row wdw-small" style={{ gap: 6 }}><span style={{ color: WDW.warn }}>●</span> Watch: filter weep — auto-schedule recheck in 500 mi?</div>
+          </div>
+        </div>
+
+        <div style={{ flex: 1 }} />
+        <div className="wdw-row" style={{ gap: 8 }}>
+          <div className="wdw-btn" style={{ flex: 1, justifyContent: 'center' }}>Save draft</div>
+          <div className="wdw-btn wdw-btn-primary" style={{ flex: 2, justifyContent: 'center' }} onClick={onSaved}>{I.check} Log task · ${(partsTotal + laborTotal).toFixed(2)}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, sub, right, children }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div className="wdw-row" style={{ justifyContent: 'space-between', marginBottom: 5 }}>
+        <div>
+          <div className="wdw-eyebrow" style={{ fontSize: 10.5 }}>{label}</div>
+          {sub && <div className="wdw-tiny wdw-muted" style={{ marginTop: 2 }}>{sub}</div>}
+        </div>
+        {right}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ChatMode({ v, onSaved }) {
+  const turns = [
+    { who: 'ai',   text: `Ready to log for the ${v.name}. Tell me what you did — photos and voice memos welcome. I'll fill out the form as we go.` },
+    { who: 'user', text: 'Just wrapped a 5k oil change. 13 qt Rotella T6, Motorcraft filter, nothing weird. Bay 2.' },
+    { who: 'ai',   text: 'Logged as an Oil & filter service. Parts drafted:\n· Motorcraft FL-500S × 1\n· Rotella T6 5W-40 × 3.25 gal\n\nI set the odometer to 87,420 from yesterday\'s reading. Is 0.8 hr labor right? Next oil scheduled for 92,420 mi.' },
+    { who: 'user', text: 'Make it 1.0 hr — spent extra time on the weep at the filter base.' },
+    { who: 'ai',   text: 'Updated to 1.0 hr. I also added a follow-up reminder: recheck filter seat in 500 mi. Anything else before I log?' },
+  ];
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', flex: 1 }}>
+      <div style={{ padding: 20, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 10, paddingRight: 8 }}>
+          {turns.map((t, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: t.who === 'user' ? 'flex-end' : 'flex-start' }}>
+              <div style={{
+                maxWidth: '78%',
+                padding: '9px 12px',
+                borderRadius: t.who === 'user' ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
+                background: t.who === 'user' ? WDW.ink : WDW.card,
+                color: t.who === 'user' ? '#fff' : WDW.ink,
+                border: t.who === 'user' ? 'none' : `1px solid ${WDW.line}`,
+                fontSize: 13, lineHeight: 1.45, whiteSpace: 'pre-wrap',
+              }}>{t.text}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div className="wdw-btn wdw-btn-ghost" style={{ width: 30, padding: 0 }}>{I.camera}</div>
+          <div className="wdw-input" style={{ flex: 1, display: 'flex', alignItems: 'center', color: WDW.muted }}>
+            Type, dictate, or drop a receipt…
+          </div>
+          <div className="wdw-btn wdw-btn-primary" onClick={onSaved}>{I.check} Commit</div>
+        </div>
+      </div>
+      <div style={{ background: WDW.card, borderLeft: `1px solid ${WDW.line}`, padding: 18, overflow: 'auto' }}>
+        <div className="wdw-eyebrow" style={{ marginBottom: 8 }}>Live draft</div>
+        <div className="wdw-card" style={{ padding: 12 }}>
+          <div className="wdw-small" style={{ fontWeight: 600 }}>Oil & filter service</div>
+          <div className="wdw-tiny wdw-muted" style={{ marginBottom: 10 }}>{v.name} · 87,420 mi · Apr 21, 2026</div>
+          <div className="wdw-divider" style={{ marginBottom: 10 }} />
+          <div className="wdw-eyebrow">Parts · $104.74</div>
+          <div className="wdw-tiny wdw-mono" style={{ marginTop: 4 }}>FL-500S × 1 · $7.40</div>
+          <div className="wdw-tiny wdw-mono">T6-5W40-G × 3.25 · $97.34</div>
+          <div className="wdw-eyebrow" style={{ marginTop: 10 }}>Labor</div>
+          <div className="wdw-small wdw-mono">1.0 hr @ $45 = $45.00</div>
+          <div className="wdw-eyebrow" style={{ marginTop: 10 }}>Follow-up</div>
+          <div className="wdw-small">Recheck filter seat in 500 mi</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TemplateMode({ v, onUseTemplate }) {
+  const templates = [
+    { name: '5,000 mi oil + filter',     desc: '5W-40 13 qt · Motorcraft FL-500S · 0.8 hr', fits: 'Shop Truck', uses: 18 },
+    { name: 'Diesel fuel filter set',    desc: 'Primary + secondary · 1.5 hr',                fits: 'Shop Truck, L3901', uses: 6 },
+    { name: 'Brake pads — front',        desc: 'Akebono ACT1414 · 2.0 hr',                    fits: 'Shop Truck, Tacoma', uses: 3 },
+    { name: 'Hydraulic fluid service',   desc: 'UDT2 · 4 qt · filter · 0.5 hr',                fits: 'L3901, RTV-X',      uses: 4 },
+    { name: 'Pre-trip inspection',       desc: '18-point checklist',                          fits: 'All',                uses: 22 },
+    { name: 'Generator test run',        desc: '30 min loaded · log hours, coolant',          fits: 'Gen Set — Barn',     uses: 14 },
+  ];
+  return (
+    <div style={{ padding: 22, overflow: 'auto', flex: 1 }}>
+      <div className="wdw-small wdw-muted" style={{ marginBottom: 14 }}>Start from a common service; all fields prefill and you can tweak before saving.</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+        {templates.map(t => (
+          <div key={t.name} className="wdw-card wdw-click" onClick={onUseTemplate} style={{ padding: 14 }}>
+            <div className="wdw-row" style={{ justifyContent: 'space-between' }}>
+              <div className="wdw-h2" style={{ fontSize: 13.5 }}>{t.name}</div>
+              <span className="wdw-chip">{t.uses}× used</span>
+            </div>
+            <div className="wdw-small wdw-muted" style={{ marginTop: 4 }}>{t.desc}</div>
+            <div className="wdw-tiny wdw-muted wdw-mono" style={{ marginTop: 8 }}>Fits: {t.fits}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { LogTaskScreen, Field });
+
+
+// ═══════════════════ midfi/screen-fuel.jsx ═══════════════════
+// Fuel fillip — AI camera capture (winner: A)
+
+function FuelScreen({ onClose, onSaved }) {
+  const [step, setStep] = React.useState('capture'); // capture | review
+
+  return (
+    <div className="wdw" style={{ background: 'rgba(21,24,26,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{
+        width: 'min(1020px, 96%)', height: 'min(680px, 92%)',
+        background: WDW.paper, borderRadius: 10,
+        boxShadow: '0 24px 60px rgba(0,0,0,0.28)', display: 'flex', flexDirection: 'column',
+        border: `1px solid ${WDW.line}`,
+      }}>
+        <div style={{ padding: '14px 18px', borderBottom: `1px solid ${WDW.line}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="wdw-h2">Fuel fill-up</div>
+          <div className="wdw-small wdw-muted">AI capture — snap the pump, we\u2019ll do the rest</div>
+          <div style={{ flex: 1 }} />
+          <div className="wdw-small wdw-muted">Step {step === 'capture' ? '1' : '2'} of 2</div>
+          <div className="wdw-btn wdw-btn-sm wdw-btn-ghost" onClick={onClose} style={{ width: 28, padding: 0 }}>{I.x}</div>
+        </div>
+        {step === 'capture' ? <FuelCapture onNext={() => setStep('review')} /> : <FuelReview onSaved={onSaved} onBack={() => setStep('capture')} />}
+      </div>
+    </div>
+  );
+}
+
+function FuelCapture({ onNext }) {
+  return (
+    <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1.3fr 1fr', overflow: 'hidden' }}>
+      <div style={{ background: '#0d0f10', padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{
+          flex: 1, background: '#161a1c', border: `1px solid #2a2e31`, borderRadius: 8,
+          position: 'relative', overflow: 'hidden',
+        }}>
+          {/* corner crop marks */}
+          {[['10%','10%','TL'],['90%','10%','TR'],['10%','90%','BL'],['90%','90%','BR']].map((p, i) => (
+            <div key={i} style={{ position: 'absolute', left: p[0], top: p[1], transform: 'translate(-50%, -50%)', width: 24, height: 24 }}>
+              <div style={{ position: 'absolute', left: 0, top: 0, width: 12, height: 2, background: WDW.orange }} />
+              <div style={{ position: 'absolute', left: 0, top: 0, width: 2, height: 12, background: WDW.orange }} />
+            </div>
+          ))}
+          {/* fake pump console */}
+          <div style={{
+            position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            width: '62%', background: '#22262a', border: '1px solid #353a3e', borderRadius: 6, padding: 16,
+            color: '#d7ff66', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right',
+          }}>
+            <div style={{ fontSize: 11, color: '#6a6f74', textAlign: 'left' }}>SHELL · PUMP 04</div>
+            <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 9, color: '#6a6f74', textAlign: 'left' }}>GALLONS</div>
+                <div style={{ fontSize: 32, letterSpacing: 1 }}>24.812</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 9, color: '#6a6f74', textAlign: 'left' }}>TOTAL $</div>
+                <div style={{ fontSize: 32, letterSpacing: 1 }}>92.10</div>
+              </div>
+            </div>
+            <div style={{ marginTop: 10, fontSize: 10, color: '#6a6f74', textAlign: 'left' }}>DIESEL #2 · $3.712 / gal</div>
+          </div>
+          {/* overlay badge — AI detecting */}
+          <div style={{ position: 'absolute', bottom: 16, left: 16, right: 16, background: 'rgba(232,92,43,0.12)', border: `1px solid ${WDW.orange}`, borderRadius: 6, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8, }}>
+            <span className="wdw-dot" style={{ background: WDW.orange }} />
+            <div className="wdw-small" style={{ }}>Detecting pump readout + odometer…</div>
+            <div style={{ flex: 1 }} />
+            <div className="wdw-mono wdw-tiny" style={{ color: WDW.orange }}>3 fields found</div>
+          </div>
+        </div>
+        <div className="wdw-row" style={{ justifyContent: 'center', gap: 12 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 20, background: '#22262a', display: 'flex', alignItems: 'center', justifyContent: 'center', }}>{I.image}</div>
+          <div className="wdw-click" onClick={onNext} style={{ width: 62, height: 62, borderRadius: 31, background: '#fff', border: '4px solid #2a2e31', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ width: 46, height: 46, borderRadius: 23, background: WDW.orange }} />
+          </div>
+          <div style={{ width: 40, height: 40, borderRadius: 20, background: '#22262a', display: 'flex', alignItems: 'center', justifyContent: 'center', }}>↻</div>
+        </div>
+      </div>
+
+      <div style={{ padding: 20, overflow: 'auto', background: WDW.card }}>
+        <div className="wdw-eyebrow">Also snap</div>
+        <div className="wdw-col" style={{ gap: 8, marginTop: 8 }}>
+          <StepRow n="1" done title="Pump readout" sub="Gallons + total $" />
+          <StepRow n="2" done title="Receipt (optional)" sub="Tax & station ID" />
+          <StepRow n="3" active title="Odometer / hours" sub="Tied to the right vehicle" />
+        </div>
+
+        <div className="wdw-divider" style={{ margin: '18px 0' }} />
+
+        <div className="wdw-eyebrow">AI guesses</div>
+        <div className="wdw-card-soft" style={{ padding: 12, marginTop: 6 }}>
+          <div className="wdw-row"><span style={{ color: WDW.teal }}>{I.check}</span>
+            <div style={{ flex: 1 }}>
+              <div className="wdw-small" style={{ fontWeight: 500 }}>Shop Truck (F-250)</div>
+              <div className="wdw-tiny wdw-muted">Diesel · last seen nearby · matches avg 22-gal fill</div>
+            </div>
+            <div className="wdw-mono wdw-tiny" style={{ color: WDW.good }}>96%</div>
+          </div>
+          <div className="wdw-divider" style={{ margin: '8px 0' }} />
+          <div className="wdw-row" style={{ opacity: 0.7 }}><span className="wdw-dot" style={{ background: WDW.muted }} />
+            <div style={{ flex: 1 }}>
+              <div className="wdw-small">L3901 Tractor</div>
+              <div className="wdw-tiny wdw-muted">Diesel · but at-home usually</div>
+            </div>
+            <div className="wdw-mono wdw-tiny wdw-muted">12%</div>
+          </div>
+        </div>
+
+        <div className="wdw-eyebrow" style={{ marginTop: 16 }}>Station</div>
+        <div className="wdw-card-soft" style={{ padding: 10, marginTop: 6 }}>
+          <div className="wdw-small" style={{ fontWeight: 500 }}>Shell · Junction, TX</div>
+          <div className="wdw-tiny wdw-muted">From photo EXIF · 30.4878, −99.7722</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StepRow({ n, title, sub, done, active }) {
+  const color = done ? WDW.good : active ? WDW.orange : WDW.muted;
+  return (
+    <div className="wdw-row" style={{ gap: 10 }}>
+      <div style={{ width: 22, height: 22, borderRadius: 11, background: done ? WDW.good : 'transparent', border: `1.5px solid ${color}`, color: done ? '#fff' : color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600 }}>
+        {done ? I.check : n}
+      </div>
+      <div>
+        <div className="wdw-small" style={{ fontWeight: 500, color: active ? WDW.ink : WDW.ink3 }}>{title}</div>
+        <div className="wdw-tiny wdw-muted">{sub}</div>
+      </div>
+    </div>
+  );
+}
+
+function FuelReview({ onSaved, onBack }) {
+  return (
+    <div style={{ flex: 1, padding: 24, overflow: 'auto' }}>
+      <div style={{ maxWidth: 720, margin: '0 auto' }}>
+        <div className="wdw-h1" style={{ marginBottom: 4 }}>Review & confirm</div>
+        <div className="wdw-small wdw-muted" style={{ marginBottom: 20 }}>AI pulled these from your 3 photos. Edit any field, then commit.</div>
+
+        <div className="wdw-card" style={{ padding: 18 }}>
+          <div className="wdw-row" style={{ justifyContent: 'space-between', marginBottom: 14 }}>
+            <div>
+              <div className="wdw-eyebrow">Vehicle</div>
+              <div className="wdw-h2" style={{ marginTop: 2 }}>Shop Truck · 2019 F-250</div>
+            </div>
+            <div className="wdw-btn wdw-btn-sm">Change…</div>
+          </div>
+          <div className="wdw-divider" />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginTop: 14 }}>
+            <Field label="Date & time">
+              <input className="wdw-input" defaultValue="Apr 21, 2026 · 9:06 AM" />
+            </Field>
+            <Field label="Odometer">
+              <input className="wdw-input wdw-mono" defaultValue="87,420 mi" />
+            </Field>
+            <Field label="Fuel type">
+              <select className="wdw-input"><option>Diesel #2</option><option>Gasoline 87</option><option>Gasoline 91</option><option>DEF</option></select>
+            </Field>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+            <Field label="Gallons">
+              <input className="wdw-input wdw-mono" defaultValue="24.812" />
+            </Field>
+            <Field label="Price / gal">
+              <input className="wdw-input wdw-mono" defaultValue="$3.712" />
+            </Field>
+            <Field label="Total">
+              <input className="wdw-input wdw-mono" defaultValue="$92.10" />
+            </Field>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 14 }}>
+            <Field label="Station">
+              <input className="wdw-input" defaultValue="Shell · Junction, TX" />
+            </Field>
+            <Field label="Paid by">
+              <select className="wdw-input"><option>Shop card · ••4421</option><option>Jack personal</option><option>Cash</option></select>
+            </Field>
+          </div>
+
+          <div className="wdw-card-soft" style={{ padding: 12, marginTop: 8 }}>
+            <div className="wdw-row" style={{ justifyContent: 'space-between' }}>
+              <div>
+                <div className="wdw-eyebrow">Calculated</div>
+                <div className="wdw-row wdw-small" style={{ gap: 14, marginTop: 6 }}>
+                  <div><span className="wdw-muted">Miles since last:</span> <span className="wdw-mono" style={{ fontWeight: 500 }}>440 mi</span></div>
+                  <div><span className="wdw-muted">MPG:</span> <span className="wdw-mono" style={{ fontWeight: 500, color: WDW.teal }}>17.7</span></div>
+                  <div><span className="wdw-muted">$ per mile:</span> <span className="wdw-mono">$0.209</span></div>
+                </div>
+              </div>
+              <div className="wdw-tiny wdw-muted">vs 14.1 avg · +25% better</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="wdw-row" style={{ gap: 10, marginTop: 18, justifyContent: 'flex-end' }}>
+          <div className="wdw-btn" onClick={onBack}>Retake photos</div>
+          <div className="wdw-btn">Save as draft</div>
+          <div className="wdw-btn wdw-btn-primary" onClick={onSaved}>{I.check} Commit fill-up</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+window.FuelScreen = FuelScreen;
+
+
+// ═══════════════════ midfi/screen-parts.jsx ═══════════════════
+// Parts inventory — receipt-fed catalog (winner: C)
+
+function PartsScreen({ onOpenUnfiled }) {
+  const [cat, setCat] = React.useState('All');
+  const [selected, setSelected] = React.useState(PARTS[3]); // out-of-stock by default for interest
+
+  const cats = ['All', 'Filter', 'Fluid', 'Brake', 'Electrical', 'Ignition'];
+  const rows = cat === 'All' ? PARTS : PARTS.filter(p => p.cat === cat);
+
+  const totals = {
+    skus: PARTS.length,
+    qty: PARTS.reduce((s, p) => s + p.qty, 0),
+    value: PARTS.reduce((s, p) => s + p.qty * p.price, 0),
+    low: PARTS.filter(p => p.qty <= p.reorder).length,
+  };
+
+  return (
+    <div className="wdw" style={{ display: 'flex', flexDirection: 'column' }}>
+      <WdwTopNav active="Parts" />
+      <div style={{ flex: 1, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1fr 380px' }}>
+        {/* main */}
+        <div style={{ overflow: 'auto', padding: '20px 28px' }}>
+          <div className="wdw-row" style={{ justifyContent: 'space-between', marginBottom: 16 }}>
+            <div>
+              <div className="wdw-h1">Parts inventory</div>
+              <div className="wdw-small wdw-muted" style={{ marginTop: 2 }}>{totals.skus} SKUs · {totals.qty} on hand · ${totals.value.toFixed(2)} value · <span style={{ color: WDW.bad }}>{totals.low} low</span></div>
+            </div>
+            <div className="wdw-row" style={{ gap: 8 }}>
+              <div className="wdw-btn">{I.doc} Import receipts</div>
+              <div className="wdw-btn">{I.camera} Scan label</div>
+              <div className="wdw-btn wdw-btn-primary">{I.plus} Add SKU</div>
+            </div>
+          </div>
+
+          {/* AI banner */}
+          <div className="wdw-click" onClick={onOpenUnfiled} style={{ padding: '10px 14px', borderRadius: 6, background: WDW.tealSoft, border: `1px solid ${WDW.teal}40`, display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+            <div style={{ width: 24, height: 24, borderRadius: 4, background: WDW.teal, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{I.doc}</div>
+            <div style={{ flex: 1 }}>
+              <div className="wdw-small" style={{ fontWeight: 500, color: WDW.tealDeep }}>RockAuto order #A-8821 ready to receive</div>
+              <div className="wdw-tiny" style={{ color: WDW.tealDeep, opacity: 0.8 }}>3 line items detected from shipping email · auto-matched to inventory</div>
+            </div>
+            <div className="wdw-btn wdw-btn-sm wdw-btn-primary" style={{ background: WDW.teal }}>Review & receive {I.arrowR}</div>
+          </div>
+
+          {/* filters */}
+          <div className="wdw-row" style={{ gap: 6, marginBottom: 12 }}>
+            {cats.map(c => (
+              <div key={c} onClick={() => setCat(c)} className="wdw-click" style={{
+                padding: '4px 10px', borderRadius: 4, fontSize: 12, fontWeight: 500,
+                background: cat === c ? WDW.ink : 'transparent',
+                color: cat === c ? '#fff' : WDW.ink3,
+                border: `1px solid ${cat === c ? WDW.ink : WDW.line}`,
+              }}>{c}</div>
+            ))}
+            <div style={{ flex: 1 }} />
+            <div className="wdw-pill wdw-pill-bad">Show low stock only</div>
+          </div>
+
+          {/* table */}
+          <div className="wdw-card" style={{ overflow: 'hidden' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '110px 2fr 70px 60px 60px 70px 1fr 70px', padding: '8px 14px', borderBottom: `1px solid ${WDW.line}`, background: WDW.paper }}>
+              {['SKU', 'Part', 'Cat', 'Qty', 'Min', 'Bin', 'Supplier', 'Unit'].map(h => <div key={h} className="wdw-eyebrow">{h}</div>)}
+            </div>
+            {rows.map(p => {
+              const low = p.qty <= p.reorder;
+              const out = p.qty === 0;
+              const isSel = selected?.sku === p.sku;
+              return (
+                <div key={p.sku} onClick={() => setSelected(p)} className="wdw-click" style={{
+                  display: 'grid', gridTemplateColumns: '110px 2fr 70px 60px 60px 70px 1fr 70px',
+                  padding: '10px 14px', borderTop: `1px solid ${WDW.line}`,
+                  alignItems: 'center',
+                  background: isSel ? WDW.tealSoft : 'transparent',
+                  borderLeft: isSel ? `3px solid ${WDW.teal}` : '3px solid transparent',
+                  paddingLeft: isSel ? 11 : 14,
+                }}>
+                  <div className="wdw-mono wdw-tiny">{p.sku}</div>
+                  <div className="wdw-small" style={{ fontWeight: 500 }}>{p.name}</div>
+                  <div><span className="wdw-chip">{p.cat}</span></div>
+                  <div className="wdw-mono wdw-small" style={{ color: out ? WDW.bad : low ? WDW.warn : WDW.ink, fontWeight: low ? 600 : 400 }}>{p.qty}</div>
+                  <div className="wdw-mono wdw-tiny wdw-muted">{p.reorder}</div>
+                  <div className="wdw-mono wdw-tiny">{p.bin}</div>
+                  <div className="wdw-small wdw-muted">{p.supplier}</div>
+                  <div className="wdw-mono wdw-small" style={{ textAlign: 'right' }}>${p.price.toFixed(2)}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* detail rail */}
+        <div style={{ background: WDW.card, borderLeft: `1px solid ${WDW.line}`, overflow: 'auto', padding: 20 }}>
+          {selected && <PartDetail p={selected} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PartDetail({ p }) {
+  const history = [
+    { when: 'Apr 12, 2026', qty: '+6', note: 'Received · RockAuto #A-7721',          bal: 6 },
+    { when: 'Apr 08, 2026', qty: '−1', note: 'Used · Shop Truck oil service',        bal: 5 },
+    { when: 'Mar 02, 2026', qty: '−1', note: 'Used · Tacoma oil service',            bal: 4 },
+    { when: 'Feb 10, 2026', qty: '+6', note: 'Received · RockAuto #A-7510',          bal: 6 },
+  ];
+  const low = p.qty <= p.reorder;
+  return (
+    <div>
+      <div className="wdw-eyebrow">SKU</div>
+      <div className="wdw-mono" style={{ fontSize: 13, marginTop: 2, color: WDW.ink2 }}>{p.sku}</div>
+      <div className="wdw-h1" style={{ fontSize: 18, marginTop: 8 }}>{p.name}</div>
+      <div className="wdw-row" style={{ gap: 6, marginTop: 6 }}>
+        <span className="wdw-chip">{p.cat}</span>
+        {low && <span className="wdw-pill wdw-pill-bad">{p.qty === 0 ? 'Out of stock' : 'Low stock'}</span>}
+      </div>
+
+      <div className="wdw-photo" style={{ height: 140, marginTop: 14 }}>part photo</div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 14 }}>
+        <div className="wdw-card-soft" style={{ padding: 10 }}>
+          <div className="wdw-tiny wdw-muted">On hand</div>
+          <div className="wdw-mono" style={{ fontSize: 22, fontWeight: 500, color: p.qty === 0 ? WDW.bad : WDW.ink }}>{p.qty}<span className="wdw-tiny wdw-muted" style={{ fontSize: 11, marginLeft: 4 }}>ea</span></div>
+          <div className="wdw-tiny wdw-muted">Min: {p.reorder} · Bin {p.bin}</div>
+        </div>
+        <div className="wdw-card-soft" style={{ padding: 10 }}>
+          <div className="wdw-tiny wdw-muted">Last cost</div>
+          <div className="wdw-mono" style={{ fontSize: 22, fontWeight: 500 }}>${p.price.toFixed(2)}</div>
+          <div className="wdw-tiny wdw-muted">Last in: {p.lastIn} · {p.supplier}</div>
+        </div>
+      </div>
+
+      <div className="wdw-row" style={{ gap: 8, marginTop: 12 }}>
+        <div className="wdw-btn wdw-btn-primary" style={{ flex: 1, justifyContent: 'center' }}>{I.plus} Receive stock</div>
+        <div className="wdw-btn" style={{ flex: 1, justifyContent: 'center' }}>Issue to task</div>
+      </div>
+      {p.qty === 0 && (
+        <div className="wdw-btn wdw-btn-accent" style={{ marginTop: 8, width: '100%', justifyContent: 'center' }}>
+          Reorder from Kubota Dealer — $48.00
+        </div>
+      )}
+
+      <div className="wdw-divider" style={{ margin: '18px 0 14px' }} />
+
+      <div className="wdw-eyebrow" style={{ marginBottom: 6 }}>Fits</div>
+      <div className="wdw-row" style={{ gap: 6, flexWrap: 'wrap' }}>
+        {p.fits.map(f => <span key={f} className="wdw-pill wdw-pill-teal">{f}</span>)}
+      </div>
+
+      <div className="wdw-eyebrow" style={{ marginTop: 18, marginBottom: 6 }}>Movement</div>
+      <div className="wdw-col">
+        {history.map((h, i) => (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '80px 36px 1fr 36px', padding: '8px 0', borderBottom: `1px solid ${WDW.line}`, alignItems: 'center' }}>
+            <div className="wdw-mono wdw-tiny wdw-muted">{h.when}</div>
+            <div className="wdw-mono wdw-small" style={{ fontWeight: 600, color: h.qty.startsWith('+') ? WDW.good : WDW.bad }}>{h.qty}</div>
+            <div className="wdw-tiny">{h.note}</div>
+            <div className="wdw-mono wdw-tiny wdw-muted" style={{ textAlign: 'right' }}>= {h.bal}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+window.PartsScreen = PartsScreen;
+
+
+// ═══════════════════ midfi/screen-inbox.jsx ═══════════════════
+// Inbox — ingestion for photos, receipts, emails, MQTT/OBD signals
+
+function InboxScreen({ onBack, onOpenVehicle }) {
+  const [selectedId, setSelectedId] = React.useState(1);
+  const sel = INBOX.find(m => m.id === selectedId) || INBOX[0];
+
+  return (
+    <div className="wdw" style={{ display: 'flex', flexDirection: 'column' }}>
+      <WdwTopNav active="Inbox" />
+      <div style={{ padding: '14px 28px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div className="wdw-row wdw-small wdw-muted">
+          <span onClick={onBack} className="wdw-click" style={{ color: WDW.teal, fontWeight: 500 }}>Fleet</span>
+          <span>›</span><span>Unfiled attachments</span>
+        </div>
+        <div className="wdw-row" style={{ gap: 8 }}>
+          <div className="wdw-btn wdw-btn-sm">Source rules</div>
+          <div className="wdw-btn wdw-btn-sm">IMAP settings →</div>
+        </div>
+      </div>
+      <div style={{ flex: 1, overflow: 'hidden', padding: '14px 28px 28px', display: 'grid', gridTemplateColumns: '380px 1fr', gap: 16 }}>
+        {/* list */}
+        <div className="wdw-card" style={{ overflow: 'auto' }}>
+          <div style={{ padding: '10px 14px', borderBottom: `1px solid ${WDW.line}`, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div className="wdw-h2">Needs routing</div>
+            <span className="wdw-chip" style={{ background: WDW.orangeSoft, color: WDW.orange }}>{INBOX.filter(m => m.status !== 'auto-logged').length}</span>
+            <div style={{ flex: 1 }} />
+            <div className="wdw-tiny wdw-muted">Today</div>
+          </div>
+          {INBOX.map(m => {
+            const isSel = m.id === selectedId;
+            const srcLabel = { email: 'Email', camera: 'Photo', scan: 'Scan', mqtt: 'MQTT' }[m.src];
+            return (
+              <div key={m.id} onClick={() => setSelectedId(m.id)} className="wdw-click" style={{
+                padding: '12px 14px', borderTop: m.id === INBOX[0].id ? 'none' : `1px solid ${WDW.line}`,
+                background: isSel ? WDW.tealSoft : 'transparent',
+                borderLeft: isSel ? `3px solid ${WDW.teal}` : '3px solid transparent',
+                paddingLeft: isSel ? 11 : 14,
+              }}>
+                <div className="wdw-row" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
+                  <div className="wdw-row" style={{ gap: 6 }}>
+                    <span className="wdw-chip">{srcLabel}</span>
+                    {m.status === 'ai-ready' && <span className="wdw-pill wdw-pill-teal">AI ready</span>}
+                    {m.status === 'auto-logged' && <span className="wdw-pill wdw-pill-good">Auto-logged</span>}
+                  </div>
+                  <div className="wdw-tiny wdw-muted">{m.when}</div>
+                </div>
+                <div className="wdw-small" style={{ fontWeight: 500, marginBottom: 2 }}>{m.title}</div>
+                <div className="wdw-tiny wdw-muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.body}</div>
+                {m.suggestion && <div className="wdw-tiny" style={{ color: WDW.tealDeep, marginTop: 6 }}>→ {m.suggestion}</div>}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* detail */}
+        <div className="wdw-card" style={{ overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '14px 18px', borderBottom: `1px solid ${WDW.line}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div>
+              <div className="wdw-h2">{sel.title}</div>
+              <div className="wdw-tiny wdw-muted">{sel.src.toUpperCase()} · {sel.when}</div>
+            </div>
+            <div style={{ flex: 1 }} />
+            <div className="wdw-btn wdw-btn-sm">Ignore</div>
+            <div className="wdw-btn wdw-btn-primary wdw-btn-sm" onClick={() => onOpenVehicle('f250')}>{I.check} Accept & attach</div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', flex: 1 }}>
+            {/* document preview */}
+            <div style={{ padding: 20, borderRight: `1px solid ${WDW.line}`, background: WDW.paper }}>
+              <div className="wdw-eyebrow" style={{ marginBottom: 8 }}>Source</div>
+              <div className="wdw-card" style={{ padding: 16, minHeight: 360, fontFamily: WDW.mono, fontSize: 11.5, lineHeight: 1.55, color: WDW.ink2 }}>
+                <div style={{ color: WDW.muted }}>From: receipts@shell.com</div>
+                <div style={{ color: WDW.muted, marginBottom: 10 }}>To: receipts+wdw@fleetaware.app</div>
+                <div style={{ fontWeight: 600 }}>Shell Fuel Receipt — $92.10</div>
+                <div style={{ marginTop: 12 }}>
+                  Thank you for visiting Shell!<br />
+                  <br />
+                  <span style={{ background: WDW.tealSoft }}>Station: Junction TX #4421</span><br />
+                  <span style={{ background: WDW.tealSoft }}>Date: 04/21/2026 09:06 AM</span><br />
+                  <br />
+                  Pump 04<br />
+                  Product: <span style={{ background: WDW.tealSoft }}>DIESEL #2</span><br />
+                  Gallons: <span style={{ background: WDW.tealSoft }}>24.812</span><br />
+                  Price/gal: <span style={{ background: WDW.tealSoft }}>$3.712</span><br />
+                  Total: <span style={{ background: WDW.tealSoft }}>$92.10</span><br />
+                  Card: VISA ••4421<br />
+                </div>
+              </div>
+            </div>
+            {/* parsed */}
+            <div style={{ padding: 20 }}>
+              <div className="wdw-eyebrow" style={{ marginBottom: 8 }}>Parsed by AI</div>
+              <div className="wdw-card-soft" style={{ padding: 12 }}>
+                <div className="wdw-small" style={{ fontWeight: 500 }}>Fuel fill-up</div>
+                <div className="wdw-tiny wdw-muted">Confidence 96% · 3 matches used</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+                  <KV label="Vehicle"   val="Shop Truck" />
+                  <KV label="Fuel"      val="Diesel #2" />
+                  <KV label="Gallons"   val="24.812" mono />
+                  <KV label="Total"     val="$92.10" mono />
+                  <KV label="Station"   val="Shell · Junction TX" />
+                  <KV label="Paid by"   val="Shop card ••4421" />
+                </div>
+              </div>
+
+              <div className="wdw-eyebrow" style={{ marginTop: 16, marginBottom: 6 }}>Auto-suggested actions</div>
+              <div className="wdw-col" style={{ gap: 6 }}>
+                <SuggestRow icon={I.check} title="Create fuel log on Shop Truck" sub="At 87,420 mi · computes 17.7 MPG" active />
+                <SuggestRow icon={I.doc} title="Attach PDF to Documents" sub="Tagged: Receipt, Fuel, 2026-Q2" />
+                <SuggestRow icon="$" title="Post to MTD fuel budget" sub="Category: Diesel · Shop Truck" />
+              </div>
+
+              <div className="wdw-eyebrow" style={{ marginTop: 16, marginBottom: 6 }}>History</div>
+              <div className="wdw-tiny wdw-muted">Pulled from IMAP · receipts@macnugget.org · 9:08 AM</div>
+              <div className="wdw-tiny wdw-muted">Previous Shell emails: 14 auto-accepted · 0 rejected</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function KV({ label, val, mono }) {
+  return (
+    <div>
+      <div className="wdw-tiny wdw-muted" style={{ textTransform: 'uppercase', letterSpacing: 0.4, fontSize: 10 }}>{label}</div>
+      <div className={mono ? 'wdw-mono' : ''} style={{ fontSize: mono ? 12.5 : 13, marginTop: 2 }}>{val}</div>
+    </div>
+  );
+}
+
+function SuggestRow({ icon, title, sub, active }) {
+  return (
+    <div className="wdw-row wdw-click" style={{
+      gap: 10, padding: '8px 10px', borderRadius: 5,
+      background: active ? WDW.tealSoft : WDW.card,
+      border: `1px solid ${active ? WDW.teal + '40' : WDW.line}`,
+    }}>
+      <div style={{ width: 22, height: 22, borderRadius: 4, background: active ? WDW.teal : WDW.paperAlt, color: active ? '#fff' : WDW.ink3, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}>{icon}</div>
+      <div style={{ flex: 1 }}>
+        <div className="wdw-small" style={{ fontWeight: 500 }}>{title}</div>
+        <div className="wdw-tiny wdw-muted">{sub}</div>
+      </div>
+      <input type="checkbox" defaultChecked={active} />
+    </div>
+  );
+}
+
+window.InboxScreen = InboxScreen;
+
+
+</script>
+  <script type="text/babel">
+    // — Top-level app: a clickable prototype that wires all screens together —
+    const { useState, useEffect } = React;
+
+    const KEY = 'fleetaware.route';
+
+    
+// ═══════════════════ Reminders dashboard ═══════════════════
+function RemindersScreen({ onOpenVehicle, onOpenUnfiled, onLogTask }) {
+  const [group, setGroup] = React.useState('urgency'); // urgency | vehicle | category
+  const [filter, setFilter] = React.useState('All');
+
+  const all = window.REMINDERS_ALL;
+  const fleet = window.FLEET;
+  const vName = (id) => (fleet.find(v => v.id === id) || {}).name || id;
+  const vGlyph = (id) => (fleet.find(v => v.id === id) || {}).glyph || 'car';
+
+  const filtered = filter === 'All' ? all : all.filter(r => {
+    if (filter === 'Overdue') return r.urgency === 'overdue';
+    if (filter === 'Due soon') return r.urgency === 'due-soon';
+    if (filter === 'On track') return r.urgency === 'ok';
+    return true;
+  });
+
+  const counts = {
+    overdue:  all.filter(r => r.urgency === 'overdue').length,
+    dueSoon:  all.filter(r => r.urgency === 'due-soon').length,
+    ok:       all.filter(r => r.urgency === 'ok').length,
+  };
+
+  const urgencyColor = { overdue: WDW.bad, 'due-soon': WDW.warn, ok: WDW.good };
+  const urgencyLabel = { overdue: 'Overdue', 'due-soon': 'Due soon', ok: 'On track' };
+  const typeChip = { date: 'DATE', odometer: 'ODO', event: 'EVENTS' };
+
+  // Build grouped buckets
+  let buckets = [];
+  if (group === 'urgency') {
+    buckets = [
+      { title: 'Overdue', color: WDW.bad,  items: filtered.filter(r => r.urgency === 'overdue') },
+      { title: 'Due soon', color: WDW.warn, items: filtered.filter(r => r.urgency === 'due-soon') },
+      { title: 'On track', color: WDW.good, items: filtered.filter(r => r.urgency === 'ok') },
+    ];
+  } else if (group === 'vehicle') {
+    const byV = {};
+    filtered.forEach(r => { (byV[r.vehicleId] ||= []).push(r); });
+    buckets = Object.entries(byV).map(([vid, items]) => ({
+      title: vName(vid), color: WDW.ink3, vehicleId: vid, items,
+    }));
+  } else {
+    const byC = {};
+    filtered.forEach(r => { (byC[r.category] ||= []).push(r); });
+    buckets = Object.entries(byC).map(([cat, items]) => ({
+      title: cat.charAt(0).toUpperCase() + cat.slice(1), color: WDW.ink3, items,
+    }));
+  }
+
+  return (
+    <div className="wdw" style={{ display: 'flex', flexDirection: 'column' }}>
+      <WdwTopNav active="Reminders" onCmd={onOpenUnfiled} />
+      <div style={{ flex: 1, overflow: 'auto', padding: '20px 28px 32px' }}>
+        <div className="wdw-row" style={{ justifyContent: 'space-between', marginBottom: 18 }}>
+          <div>
+            <div className="wdw-h1">Reminders</div>
+            <div className="wdw-small wdw-muted" style={{ marginTop: 2 }}>{all.length} tracked · last synced 2 min ago</div>
+          </div>
+          <div className="wdw-btn wdw-btn-primary" onClick={onLogTask}>{I.plus} New reminder</div>
+        </div>
+
+        {/* Counts strip */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 18 }}>
+          <div className="wdw-card" style={{ padding: '14px 16px', borderLeft: `3px solid ${WDW.bad}` }}>
+            <div className="wdw-eyebrow">Overdue</div>
+            <div className="wdw-mono" style={{ fontSize: 24, fontWeight: 500, marginTop: 6, color: WDW.bad }}>{counts.overdue}</div>
+            <div className="wdw-tiny wdw-muted" style={{ marginTop: 2 }}>Address before next event</div>
+          </div>
+          <div className="wdw-card" style={{ padding: '14px 16px', borderLeft: `3px solid ${WDW.warn}` }}>
+            <div className="wdw-eyebrow">Due soon</div>
+            <div className="wdw-mono" style={{ fontSize: 24, fontWeight: 500, marginTop: 6, color: WDW.warn }}>{counts.dueSoon}</div>
+            <div className="wdw-tiny wdw-muted" style={{ marginTop: 2 }}>Next 30 days / 1 event</div>
+          </div>
+          <div className="wdw-card" style={{ padding: '14px 16px', borderLeft: `3px solid ${WDW.good}` }}>
+            <div className="wdw-eyebrow">On track</div>
+            <div className="wdw-mono" style={{ fontSize: 24, fontWeight: 500, marginTop: 6, color: WDW.good }}>{counts.ok}</div>
+            <div className="wdw-tiny wdw-muted" style={{ marginTop: 2 }}>Scheduled, no action needed</div>
+          </div>
+        </div>
+
+        {/* Controls row */}
+        <div className="wdw-row" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
+          <div className="wdw-row" style={{ gap: 6 }}>
+            {['All', 'Overdue', 'Due soon', 'On track'].map(f => (
+              <div key={f} onClick={() => setFilter(f)} className="wdw-click" style={{
+                padding: '4px 10px', borderRadius: 4, fontSize: 12, fontWeight: 500,
+                background: filter === f ? WDW.ink : 'transparent',
+                color: filter === f ? '#fff' : WDW.ink3,
+                border: `1px solid ${filter === f ? WDW.ink : WDW.line}`,
+              }}>{f}</div>
+            ))}
+          </div>
+          <div className="wdw-row" style={{ gap: 8 }}>
+            <span className="wdw-tiny wdw-muted">Group by</span>
+            <div className="wdw-row" style={{ gap: 2, padding: 2, background: WDW.paperAlt, borderRadius: 5 }}>
+              {[['urgency', 'Urgency'], ['vehicle', 'Vehicle'], ['category', 'System']].map(([k, label]) => (
+                <div key={k} onClick={() => setGroup(k)} className="wdw-click" style={{
+                  padding: '3px 10px', borderRadius: 3, fontSize: 11.5, fontWeight: 500,
+                  background: group === k ? WDW.card : 'transparent',
+                  color: group === k ? WDW.ink : WDW.ink3,
+                  boxShadow: group === k ? '0 1px 2px rgba(0,0,0,0.04)' : 'none',
+                }}>{label}</div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Buckets */}
+        <div className="wdw-col" style={{ gap: 14 }}>
+          {buckets.filter(b => b.items.length > 0).map((b, bi) => (
+            <div key={bi} className="wdw-card" style={{ overflow: 'hidden' }}>
+              <div style={{ padding: '10px 14px', borderBottom: `1px solid ${WDW.line}`, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="wdw-dot" style={{ background: b.color }} />
+                <div className="wdw-h2" style={{ fontSize: 14 }}>{b.title}</div>
+                <div className="wdw-tiny wdw-muted" style={{ marginLeft: 'auto' }}>{b.items.length} · {b.items.filter(r => r.urgency !== 'ok').length} need attention</div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '140px 1.4fr 80px 1.2fr 1.4fr 1fr 130px', padding: '8px 14px', borderBottom: `1px solid ${WDW.line}`, background: WDW.paper }}>
+                {['Vehicle', 'Reminder', 'Type', 'Last done', 'Interval', 'Next due', ''].map(h => <div key={h} className="wdw-eyebrow">{h}</div>)}
+              </div>
+              {b.items.map((r, i) => (
+                <div key={r.id} className="wdw-click" onClick={() => onOpenVehicle(r.vehicleId)} style={{
+                  display: 'grid', gridTemplateColumns: '140px 1.4fr 80px 1.2fr 1.4fr 1fr 130px',
+                  padding: '10px 14px', borderTop: i === 0 ? 'none' : `1px solid ${WDW.line}`, alignItems: 'center', gap: 8,
+                }}>
+                  <div className="wdw-row" style={{ gap: 6 }}>
+                    <VGlyph type={vGlyph(r.vehicleId)} size={22} color={WDW.ink3} />
+                    <div className="wdw-small" style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{vName(r.vehicleId)}</div>
+                  </div>
+                  <div>
+                    <div className="wdw-small" style={{ fontWeight: 500 }}>{r.name}</div>
+                    <div className="wdw-tiny wdw-muted">{r.category}</div>
+                  </div>
+                  <div><span className="wdw-chip">{typeChip[r.type]}</span></div>
+                  <div className="wdw-small wdw-mono wdw-muted">{r.lastDone}</div>
+                  <div className="wdw-small wdw-muted">{r.interval}</div>
+                  <div className="wdw-row" style={{ gap: 4 }}>
+                    <span className="wdw-dot" style={{ background: urgencyColor[r.urgency] }} />
+                    <span className="wdw-small wdw-mono" style={{ color: urgencyColor[r.urgency], fontWeight: 500 }}>{r.nextDue}</span>
+                  </div>
+                  <div className="wdw-row" style={{ gap: 4, justifyContent: 'flex-end' }} onClick={(e) => e.stopPropagation()}>
+                    <div className="wdw-btn wdw-btn-sm" onClick={onLogTask}>Log done</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+window.RemindersScreen = RemindersScreen;
+
+// ═══════════════════ Expenses ═══════════════════
+function ExpensesScreen({ onOpenVehicle, onOpenUnfiled, onLogTask }) {
+  const [category, setCategory] = React.useState('All');
+  const [vehicleFilter, setVehicleFilter] = React.useState('All');
+  const all = window.EXPENSES;
+  const fleet = window.FLEET;
+  const vName = (id) => (fleet.find(v => v.id === id) || {}).name || id;
+  const vGlyph = (id) => (fleet.find(v => v.id === id) || {}).glyph || 'car';
+
+  const cats = ['fuel','maintenance','insurance','registration','tax','depreciation','financing','tolls','parking','track_fees','tires','other'];
+  const catLabel = { fuel: 'Fuel', maintenance: 'Maintenance', insurance: 'Insurance', registration: 'Registration', tax: 'Tax', depreciation: 'Depreciation', financing: 'Financing', tolls: 'Tolls', parking: 'Parking/Storage', track_fees: 'Track fees', tires: 'Tires', other: 'Other' };
+
+  const filtered = all.filter(e => {
+    if (category !== 'All' && e.category !== category) return false;
+    if (vehicleFilter !== 'All' && e.vehicleId !== vehicleFilter) return false;
+    return true;
+  });
+
+  const total = filtered.reduce((a, e) => a + e.cost, 0);
+  const byCat = {};
+  filtered.forEach(e => { byCat[e.category] = (byCat[e.category] || 0) + e.cost; });
+  const topCats = Object.entries(byCat).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  return (
+    <div className="wdw" style={{ display: 'flex', flexDirection: 'column' }}>
+      <WdwTopNav active="Reports" onCmd={onOpenUnfiled} />
+      <div style={{ flex: 1, overflow: 'auto', padding: '20px 28px 32px' }}>
+        <div className="wdw-row" style={{ justifyContent: 'space-between', marginBottom: 18 }}>
+          <div>
+            <div className="wdw-h1">Expenses</div>
+            <div className="wdw-small wdw-muted" style={{ marginTop: 2 }}>{all.length} entries · all vehicles · last 12 months</div>
+          </div>
+          <div className="wdw-row" style={{ gap: 8 }}>
+            <div className="wdw-btn">Export CSV</div>
+            <div className="wdw-btn wdw-btn-primary" onClick={onLogTask}>{I.plus} Log expense</div>
+          </div>
+        </div>
+
+        {/* KPI row */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2.4fr', gap: 12, marginBottom: 18 }}>
+          <div className="wdw-card" style={{ padding: '14px 16px' }}>
+            <div className="wdw-eyebrow">Filtered total</div>
+            <div className="wdw-mono" style={{ fontSize: 26, fontWeight: 500, marginTop: 6 }}>${total.toLocaleString()}</div>
+            <div className="wdw-tiny wdw-muted" style={{ marginTop: 2 }}>{filtered.length} entries</div>
+          </div>
+          <div className="wdw-card" style={{ padding: '14px 16px' }}>
+            <div className="wdw-eyebrow">By category</div>
+            <div className="wdw-col" style={{ gap: 4, marginTop: 8 }}>
+              {topCats.map(([c, v]) => (
+                <div key={c} className="wdw-row wdw-small" style={{ gap: 8 }}>
+                  <div style={{ width: 120 }}>{catLabel[c] || c}</div>
+                  <div style={{ flex: 1, height: 6, background: WDW.paperAlt, borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ width: `${Math.round(v / total * 100)}%`, height: '100%', background: WDW.teal }} />
+                  </div>
+                  <div className="wdw-mono wdw-tiny" style={{ width: 70, textAlign: 'right' }}>${v.toLocaleString()}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="wdw-row" style={{ gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <div className="wdw-row" style={{ gap: 6 }}>
+            {['All', ...cats].map(c => (
+              <div key={c} onClick={() => setCategory(c)} className="wdw-click" style={{
+                padding: '4px 10px', borderRadius: 4, fontSize: 12, fontWeight: 500,
+                background: category === c ? WDW.ink : 'transparent',
+                color: category === c ? '#fff' : WDW.ink3,
+                border: `1px solid ${category === c ? WDW.ink : WDW.line}`,
+              }}>{c === 'All' ? 'All' : (catLabel[c] || c)}</div>
+            ))}
+          </div>
+        </div>
+        <div className="wdw-row" style={{ gap: 8, marginBottom: 12 }}>
+          <span className="wdw-tiny wdw-muted">Vehicle:</span>
+          <div onClick={() => setVehicleFilter('All')} className="wdw-click wdw-small" style={{ padding: '3px 8px', borderRadius: 3, background: vehicleFilter === 'All' ? WDW.paperAlt : 'transparent', fontWeight: vehicleFilter === 'All' ? 500 : 400 }}>All vehicles</div>
+          {fleet.map(v => (
+            <div key={v.id} onClick={() => setVehicleFilter(v.id)} className="wdw-click wdw-small" style={{ padding: '3px 8px', borderRadius: 3, background: vehicleFilter === v.id ? WDW.paperAlt : 'transparent', fontWeight: vehicleFilter === v.id ? 500 : 400 }}>{v.name}</div>
+          ))}
+        </div>
+
+        {/* Table */}
+        <div className="wdw-card" style={{ overflow: 'hidden' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '100px 150px 120px 2fr 1fr 100px 60px', padding: '8px 14px', borderBottom: `1px solid ${WDW.line}`, background: WDW.paper }}>
+            {['Date', 'Vehicle', 'Category', 'Description', 'Vendor', 'Amount', ''].map(h => <div key={h} className="wdw-eyebrow" style={{ textAlign: h === 'Amount' ? 'right' : 'left' }}>{h}</div>)}
+          </div>
+          {filtered.map((e, i) => (
+            <div key={e.id} className="wdw-click" onClick={() => onOpenVehicle(e.vehicleId)} style={{
+              display: 'grid', gridTemplateColumns: '100px 150px 120px 2fr 1fr 100px 60px',
+              padding: '10px 14px', borderTop: i === 0 ? 'none' : `1px solid ${WDW.line}`, alignItems: 'center', gap: 8,
+            }}>
+              <div className="wdw-small wdw-mono wdw-muted">{e.date}</div>
+              <div className="wdw-row" style={{ gap: 6 }}>
+                <VGlyph type={vGlyph(e.vehicleId)} size={22} color={WDW.ink3} />
+                <div className="wdw-small" style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{vName(e.vehicleId)}</div>
+              </div>
+              <div><span className="wdw-chip">{catLabel[e.category] || e.category}</span></div>
+              <div className="wdw-small">{e.description}</div>
+              <div className="wdw-small wdw-muted">{e.vendor}</div>
+              <div className="wdw-mono wdw-small" style={{ textAlign: 'right', fontWeight: 500 }}>${e.cost.toLocaleString()}</div>
+              <div className="wdw-tiny wdw-muted" style={{ textAlign: 'right' }}>{e.recurring ? 'recur' : ''}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+window.ExpensesScreen = ExpensesScreen;
+
+// ═══════════════════ Settings ═══════════════════
+function SettingsScreen({ onOpenUnfiled }) {
+  const [tab, setTab] = React.useState('shop');
+  const tabs = [
+    ['shop',     'Site & branding'],
+    ['users',    'Crew'],
+    ['units',    'Units & costs'],
+    ['integrations', 'Integrations'],
+    ['data',     'Data & export'],
+  ];
+
+  return (
+    <div className="wdw" style={{ display: 'flex', flexDirection: 'column' }}>
+      <WdwTopNav active="Settings" onCmd={onOpenUnfiled} />
+      <div style={{ flex: 1, overflow: 'hidden', display: 'grid', gridTemplateColumns: '220px 1fr' }}>
+        {/* left rail */}
+        <div style={{ borderRight: `1px solid ${WDW.line}`, padding: '18px 14px', background: WDW.paper }}>
+          <div className="wdw-h1" style={{ fontSize: 16, marginBottom: 4 }}>Site administration</div>
+          <div className="wdw-tiny wdw-muted" style={{ marginBottom: 14 }}>Changes affect every user.</div>
+          <div className="wdw-col" style={{ gap: 2 }}>
+            {tabs.map(([k, label]) => (
+              <div key={k} onClick={() => setTab(k)} className="wdw-click" style={{
+                padding: '6px 10px', borderRadius: 4, fontSize: 13,
+                background: tab === k ? WDW.ink : 'transparent',
+                color: tab === k ? '#fff' : WDW.ink2,
+                fontWeight: tab === k ? 500 : 400,
+              }}>{label}</div>
+            ))}
+          </div>
+          <div className="wdw-divider" style={{ margin: '14px 0' }} />
+          <div className="wdw-card-soft" style={{ padding: 10 }}>
+            <div className="wdw-tiny wdw-muted" style={{ textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600, marginBottom: 4 }}>About</div>
+            <div className="wdw-tiny wdw-muted" style={{ lineHeight: 1.5 }}>
+              <span className="wdw-mono">wdw-fleet v0.8.2</span><br/>
+              Self-hosted · MIT licensed<br/>
+              <span className="wdw-click" style={{ color: WDW.tealDeep, textDecoration: 'underline' }}>github.com/macnugget/wdw-fleet</span>
+            </div>
+          </div>
+        </div>
+
+        {/* content */}
+        <div style={{ overflow: 'auto', padding: '22px 28px 32px' }}>
+          {tab === 'shop' && <SettingsShop />}
+          {tab === 'users' && <SettingsUsers />}
+          {tab === 'units' && <SettingsUnits />}
+          {tab === 'integrations' && <SettingsIntegrations />}
+          {tab === 'data' && <SettingsData />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SettingRow({ label, sub, children }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 20, padding: '14px 0', borderTop: `1px solid ${WDW.line}` }}>
+      <div>
+        <div className="wdw-small" style={{ fontWeight: 500 }}>{label}</div>
+        {sub && <div className="wdw-tiny wdw-muted" style={{ marginTop: 2, lineHeight: 1.4 }}>{sub}</div>}
+      </div>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+function Toggle({ on }) {
+  const [v, setV] = React.useState(!!on);
+  return (
+    <div onClick={() => setV(!v)} className="wdw-click" style={{
+      width: 34, height: 20, borderRadius: 10, background: v ? WDW.teal : WDW.faint,
+      position: 'relative', transition: 'background 0.15s',
+    }}>
+      <div style={{
+        position: 'absolute', top: 2, left: v ? 16 : 2, width: 16, height: 16, borderRadius: '50%',
+        background: '#fff', transition: 'left 0.15s', boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+      }} />
+    </div>
+  );
+}
+
+function SettingsShop() {
+  const [, force] = React.useReducer(x => x + 1, 0);
+  const site = window.__siteConfig;
+  const update = (patch) => {
+    window.__siteConfig = { ...site, ...patch };
+    localStorage.setItem('wdw_site_config', JSON.stringify(window.__siteConfig));
+    applyPalette(resolvePalette((window.__userProfile || {}).theme, window.__siteConfig));
+    if (window.__rerenderApp) window.__rerenderApp();
+    force();
+  };
+
+  return (
+    <div>
+      <div className="wdw-h1">Site &amp; branding</div>
+      <div className="wdw-small wdw-muted" style={{ marginTop: 4, marginBottom: 12 }}>How every page of this instance looks and is labeled.</div>
+
+      <SettingRow label="Site title" sub="Big word in the top-left header.">
+        <input className="wdw-input" defaultValue={site.siteTitle} onBlur={e => update({ siteTitle: e.target.value })} style={{ width: 300 }} />
+      </SettingRow>
+      <SettingRow label="Tagline" sub="Small all-caps line under the title.">
+        <input className="wdw-input" defaultValue={site.tagline} onBlur={e => update({ tagline: e.target.value })} style={{ width: 380 }} />
+      </SettingRow>
+      <SettingRow label="Logo" sub="Appears in the header and on PDF exports.">
+        <div className="wdw-row" style={{ gap: 10, alignItems: 'center' }}>
+          <div style={{ width: 56, height: 56, borderRadius: 6, background: WDW.ink, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>{(site.siteTitle || 'WD').slice(0,2).toUpperCase()}</div>
+          <div className="wdw-btn wdw-btn-sm">Upload new…</div>
+          <div className="wdw-tiny wdw-muted">PNG or SVG, square, 256px+</div>
+        </div>
+      </SettingRow>
+
+      <div style={{ height: 10 }} />
+      <div className="wdw-h2" style={{ marginTop: 18, marginBottom: 4 }}>Color scheme</div>
+      <div className="wdw-small wdw-muted" style={{ marginBottom: 6, maxWidth: 580, lineHeight: 1.5 }}>
+        Override the brand colors. Each user still picks their own light/dark/auto preference — these just replace the accent hues inside whichever mode is active.
+      </div>
+
+      <SettingRow label="Primary" sub="Buttons, active tabs, focus rings, charts.">
+        <ColorPicker value={site.primaryColor || WDW.teal} onChange={v => update({ primaryColor: v })} onReset={() => update({ primaryColor: null })} presets={['#1f7a7f','#2d6cdf','#a33b2a','#0d5b3f','#6a4bd9','#b7791f']} isDefault={!site.primaryColor} />
+      </SettingRow>
+      <SettingRow label="Accent" sub="Highlights, floating actions, callouts.">
+        <ColorPicker value={site.accentColor || WDW.orange} onChange={v => update({ accentColor: v })} onReset={() => update({ accentColor: null })} presets={['#e85c2b','#e0a43f','#5ca23a','#c6438d','#e05252','#3aa39a']} isDefault={!site.accentColor} />
+      </SettingRow>
+      <SettingRow label="Preview" sub="Live, using your user theme.">
+        <BrandPreview />
+      </SettingRow>
+
+      <div style={{ height: 10 }} />
+      <div className="wdw-h2" style={{ marginTop: 18, marginBottom: 4 }}>Defaults</div>
+      <div className="wdw-small wdw-muted" style={{ marginBottom: 6 }}>Site-wide defaults. Users can override per-profile.</div>
+
+      <SettingRow label="Address" sub="Used for registration and inspection reminders.">
+        <input className="wdw-input" defaultValue="2140 Ridge Road, Dripping Springs, TX 78620" style={{ width: 420 }} />
+      </SettingRow>
+      <SettingRow label="Default currency">
+        <select className="wdw-input" style={{ width: 140 }}><option>USD ($)</option><option>CAD ($)</option><option>EUR (€)</option><option>GBP (£)</option></select>
+      </SettingRow>
+      <SettingRow label="Timezone">
+        <select className="wdw-input" style={{ width: 260 }}><option>America/Chicago (UTC−5)</option><option>America/Los_Angeles</option><option>America/New_York</option></select>
+      </SettingRow>
+    </div>
+  );
+}
+
+function ColorPicker({ value, onChange, onReset, presets, isDefault }) {
+  return (
+    <div className="wdw-row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <label className="wdw-click" style={{ position: 'relative', width: 36, height: 36, borderRadius: 6, background: value, border: `1px solid ${WDW.lineStrong}`, overflow: 'hidden' }}>
+        <input type="color" value={value} onChange={e => onChange(e.target.value)} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
+      </label>
+      <div className="wdw-mono wdw-small" style={{ padding: '5px 10px', background: WDW.paperAlt, borderRadius: 4, minWidth: 90, textAlign: 'center' }}>{value.toUpperCase()}</div>
+      <div className="wdw-row" style={{ gap: 4 }}>
+        {presets.map(p => (
+          <div key={p} onClick={() => onChange(p)} className="wdw-click" style={{ width: 20, height: 20, borderRadius: 4, background: p, border: `2px solid ${value.toLowerCase() === p.toLowerCase() ? WDW.ink : 'transparent'}` }} title={p} />
+        ))}
+      </div>
+      {!isDefault && <div className="wdw-btn wdw-btn-sm" onClick={onReset}>Reset</div>}
+    </div>
+  );
+}
+
+function BrandPreview() {
+  return (
+    <div style={{
+      display: 'inline-flex', gap: 10, padding: 12, borderRadius: 6,
+      background: WDW.card, border: `1px solid ${WDW.line}`, alignItems: 'center',
+    }}>
+      <div className="wdw-btn wdw-btn-primary">{I.check} Primary action</div>
+      <div className="wdw-pill wdw-pill-teal">Filter active</div>
+      <div style={{
+        padding: '5px 11px', borderRadius: 14, background: WDW.orange, color: '#fff',
+        fontSize: 12, fontWeight: 500,
+      }}>Accent pill</div>
+      <div style={{ width: 28, height: 28, borderRadius: 14, background: WDW.teal, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600 }}>{((window.__userProfile || {}).initials || 'JB')}</div>
+    </div>
+  );
+}
+
+
+function SettingsUsers() {
+  const crew = [
+    { name: 'Jack (me)',      role: 'Owner',     tasks: 142, you: true },
+    { name: 'Miguel Torres',  role: 'Mechanic',  tasks: 38 },
+    { name: 'Sara Linville',  role: 'Driver',    tasks: 12 },
+    { name: 'Outside shop',   role: 'External',  tasks: 9 },
+  ];
+  return (
+    <div>
+      <div className="wdw-row" style={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
+        <div>
+          <div className="wdw-h1">Crew</div>
+          <div className="wdw-small wdw-muted" style={{ marginTop: 4, maxWidth: 540, lineHeight: 1.5 }}>
+            Names that show up in the "Performed by" dropdown when logging work. These are attribution labels — <span className="wdw-mono">wdw-fleet</span> is single-user; there are no logins.
+          </div>
+        </div>
+        <div className="wdw-btn wdw-btn-primary">{I.plus} Add person</div>
+      </div>
+
+      <div className="wdw-card" style={{ marginTop: 16, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 160px 1fr 60px', padding: '8px 14px', background: WDW.paper, borderBottom: `1px solid ${WDW.line}` }}>
+          {['Name', 'Role', 'Tasks logged', ''].map(h => <div key={h} className="wdw-eyebrow">{h}</div>)}
+        </div>
+        {crew.map((p, i) => (
+          <div key={p.name} style={{
+            display: 'grid', gridTemplateColumns: '2fr 160px 1fr 60px',
+            padding: '12px 14px', borderTop: i === 0 ? 'none' : `1px solid ${WDW.line}`, alignItems: 'center',
+          }}>
+            <div className="wdw-row" style={{ gap: 10 }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: WDW.tealSoft, color: WDW.tealDeep, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600 }}>
+                {p.name.replace(/\(.*\)/, '').trim().split(' ').map(s => s[0]).join('').slice(0,2)}
+              </div>
+              <div className="wdw-small" style={{ fontWeight: 500 }}>{p.name}</div>
+            </div>
+            <div><span className="wdw-chip">{p.role}</span></div>
+            <div className="wdw-small wdw-muted wdw-mono">{p.tasks}</div>
+            <div className="wdw-btn wdw-btn-sm wdw-btn-ghost" style={{ width: 26, padding: 0 }}>⋯</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SettingsUnits() {
+  return (
+    <div>
+      <div className="wdw-h1">Units & costs</div>
+      <div className="wdw-small wdw-muted" style={{ marginTop: 4, marginBottom: 12 }}>Defaults for new tasks — always overridable per vehicle.</div>
+      <SettingRow label="Distance">
+        <div className="wdw-row" style={{ gap: 6 }}>
+          <div className="wdw-btn" style={{ background: WDW.ink, color: '#fff', borderColor: WDW.ink }}>Miles</div>
+          <div className="wdw-btn">Kilometers</div>
+        </div>
+      </SettingRow>
+      <SettingRow label="Volume">
+        <div className="wdw-row" style={{ gap: 6 }}>
+          <div className="wdw-btn" style={{ background: WDW.ink, color: '#fff', borderColor: WDW.ink }}>Gallons (US)</div>
+          <div className="wdw-btn">Liters</div>
+        </div>
+      </SettingRow>
+      <SettingRow label="Default labor rate" sub="Applied to new in-house work. Shows on cost rollups.">
+        <div className="wdw-row" style={{ gap: 6, alignItems: 'center' }}>
+          <input className="wdw-input wdw-mono" defaultValue="$45.00" style={{ width: 110 }} />
+          <span className="wdw-small wdw-muted">/ hour</span>
+        </div>
+      </SettingRow>
+      <SettingRow label="Track parts markup" sub="For shared/customer vehicles. Does not apply to owned fleet.">
+        <Toggle />
+      </SettingRow>
+      <SettingRow label="Fuel price tracking" sub="We'll log pump price with each fill-up for $/mi trending.">
+        <Toggle on />
+      </SettingRow>
+    </div>
+  );
+}
+
+function SettingsIntegrations() {
+  const parsers = [
+    { name: 'RockAuto',       status: 'healthy', count: 34, last: '3 days ago' },
+    { name: 'FCP Euro',       status: 'healthy', count: 18, last: '2 weeks ago' },
+    { name: 'Tire Rack',      status: 'healthy', count:  6, last: '5 weeks ago' },
+    { name: 'Summit Racing',  status: 'healthy', count: 11, last: 'Jan 14' },
+    { name: 'ECS Tuning',     status: 'healthy', count:  4, last: 'Dec 22' },
+    { name: 'Pelican Parts',  status: 'beta',    count:  2, last: 'Nov 08' },
+    { name: 'Amazon',         status: 'beta',    count:  9, last: '1 week ago' },
+    { name: 'Generic PDF',    status: 'fallback', count: 7, last: '4 days ago' },
+  ];
+  const statusMeta = {
+    healthy:  { label: 'Parser OK',  color: WDW.good },
+    beta:     { label: 'Beta',        color: WDW.warn },
+    fallback: { label: 'Fallback',    color: WDW.muted },
+  };
+
+  return (
+    <div>
+      <div className="wdw-h1">Integrations</div>
+      <div className="wdw-small wdw-muted" style={{ marginTop: 4, marginBottom: 20, maxWidth: 600, lineHeight: 1.5 }}>
+        Two integrations, both simple. Receipt importing handles the vendor sprawl so you don't have to.
+      </div>
+
+      {/* Integration 1: Vendor receipt import */}
+      <div className="wdw-card" style={{ padding: 18, marginBottom: 20 }}>
+        <div className="wdw-row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 14 }}>
+          <div style={{ flex: 1 }}>
+            <div className="wdw-row" style={{ gap: 10, alignItems: 'center' }}>
+              <div style={{ width: 34, height: 34, borderRadius: 6, background: WDW.tealSoft, color: WDW.tealDeep, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              </div>
+              <div>
+                <div className="wdw-h2">Vendor receipt import</div>
+                <div className="wdw-tiny wdw-muted" style={{ marginTop: 2 }}>wdw-fleet polls an IMAP mailbox over SSL; pluggable parsers extract parts, costs, and vendor info.</div>
+              </div>
+            </div>
+          </div>
+          <div className="wdw-row" style={{ gap: 10, alignItems: 'center' }}>
+            <div className="wdw-tiny wdw-muted">Enabled</div>
+            <Toggle on />
+          </div>
+        </div>
+
+        <div style={{ marginTop: 16, padding: 12, background: WDW.paper, borderRadius: 6, border: `1px solid ${WDW.line}` }}>
+          <div className="wdw-row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div className="wdw-eyebrow">IMAP inbox</div>
+            <div className="wdw-row" style={{ gap: 6, alignItems: 'center' }}>
+              <span className="wdw-dot" style={{ background: WDW.good, width: 6, height: 6 }} />
+              <div className="wdw-tiny" style={{ color: WDW.good, fontWeight: 500 }}>Connected · polled 3 min ago</div>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 80px 70px', gap: 8, marginBottom: 8 }}>
+            <div>
+              <div className="wdw-tiny wdw-muted" style={{ marginBottom: 3 }}>Host</div>
+              <input className="wdw-input wdw-mono" defaultValue="mail.macnugget.org" style={{ fontSize: 12 }} />
+            </div>
+            <div>
+              <div className="wdw-tiny wdw-muted" style={{ marginBottom: 3 }}>Port</div>
+              <input className="wdw-input wdw-mono" defaultValue="993" style={{ fontSize: 12 }} />
+            </div>
+            <div>
+              <div className="wdw-tiny wdw-muted" style={{ marginBottom: 3 }}>TLS</div>
+              <div style={{ height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', background: WDW.tealSoft, color: WDW.tealDeep, borderRadius: 4, fontSize: 11, fontWeight: 600 }}>SSL ✓</div>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            <div>
+              <div className="wdw-tiny wdw-muted" style={{ marginBottom: 3 }}>Username</div>
+              <input className="wdw-input wdw-mono" defaultValue="receipts@macnugget.org" style={{ fontSize: 12 }} />
+            </div>
+            <div>
+              <div className="wdw-tiny wdw-muted" style={{ marginBottom: 3 }}>Password</div>
+              <input className="wdw-input wdw-mono" type="password" defaultValue="•••••••••••••" style={{ fontSize: 12 }} />
+            </div>
+            <div>
+              <div className="wdw-tiny wdw-muted" style={{ marginBottom: 3 }}>Folder</div>
+              <input className="wdw-input wdw-mono" defaultValue="INBOX" style={{ fontSize: 12 }} />
+            </div>
+          </div>
+          <div className="wdw-row" style={{ gap: 10, alignItems: 'center', marginTop: 10 }}>
+            <div className="wdw-btn wdw-btn-sm">Test connection</div>
+            <div className="wdw-tiny wdw-muted" style={{ flex: 1 }}>Polls every 10 min · requires TLS 1.2+ · IDLE supported if the server offers it.</div>
+          </div>
+          <div className="wdw-tiny wdw-muted" style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${WDW.line}`, lineHeight: 1.5 }}>
+            Dedicate a mailbox to receipts and set up server-side filters on your mail host to route receipts there. Messages are marked read (not deleted) after parsing; originals stay in your inbox.
+          </div>
+        </div>
+
+        <div style={{ marginTop: 16 }}>
+          <div className="wdw-row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div className="wdw-eyebrow">Parsers ({parsers.length})</div>
+            <div className="wdw-btn wdw-btn-sm wdw-btn-ghost" style={{ fontSize: 11 }}>Write a parser →</div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
+            {parsers.map(p => {
+              const m = statusMeta[p.status];
+              return (
+                <div key={p.name} className="wdw-card-soft" style={{ padding: '8px 12px', display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'center' }}>
+                  <div>
+                    <div className="wdw-small" style={{ fontWeight: 500 }}>{p.name}</div>
+                    <div className="wdw-tiny wdw-muted" style={{ marginTop: 1 }}>{p.count} receipts · last {p.last}</div>
+                  </div>
+                  <div className="wdw-row" style={{ gap: 4, alignItems: 'center' }}>
+                    <span className="wdw-dot" style={{ background: m.color, width: 6, height: 6 }} />
+                    <div className="wdw-tiny" style={{ color: m.color, fontWeight: 500 }}>{m.label}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="wdw-tiny wdw-muted" style={{ marginTop: 8, lineHeight: 1.5 }}>
+            Parsers live in <span className="wdw-mono">internal/webhook/parsers/</span>. Unknown vendors fall back to the generic PDF parser; it grabs totals and line items but may miss part numbers.
+          </div>
+        </div>
+      </div>
+
+      {/* Integration 2: Webhook */}
+      <div className="wdw-card" style={{ padding: 18 }}>
+        <div className="wdw-row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 14 }}>
+          <div style={{ flex: 1 }}>
+            <div className="wdw-row" style={{ gap: 10, alignItems: 'center' }}>
+              <div style={{ width: 34, height: 34, borderRadius: 6, background: WDW.paperAlt, color: WDW.ink3, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z"/></svg>
+              </div>
+              <div>
+                <div className="wdw-h2">Webhook</div>
+                <div className="wdw-tiny wdw-muted" style={{ marginTop: 2 }}>POST on task.logged, reminder.due, receipt.parsed.</div>
+              </div>
+            </div>
+          </div>
+          <div className="wdw-row" style={{ gap: 10, alignItems: 'center' }}>
+            <div className="wdw-tiny wdw-muted">Off</div>
+            <Toggle />
+          </div>
+        </div>
+        <div style={{ marginTop: 14, padding: 12, background: WDW.paper, borderRadius: 6, border: `1px solid ${WDW.line}` }}>
+          <div className="wdw-eyebrow" style={{ marginBottom: 6 }}>Endpoint URL</div>
+          <input className="wdw-input wdw-mono" style={{ width: '100%', fontSize: 12 }} placeholder="https://your-server.example.com/hooks/wdw" />
+          <div className="wdw-tiny wdw-muted" style={{ marginTop: 8, lineHeight: 1.5 }}>
+            Payloads are signed with HMAC-SHA256 using your API token (see <span className="wdw-click" style={{ color: WDW.tealDeep, textDecoration: 'underline' }}>Data & export</span>).
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SettingsData() {
+  return (
+    <div>
+      <div className="wdw-h1">Data & export</div>
+      <div className="wdw-small wdw-muted" style={{ marginTop: 4, marginBottom: 12 }}>Your logs, your data. Take it with you whenever you want.</div>
+      <SettingRow label="Export full history" sub="One ZIP with CSV per table + every receipt image.">
+        <div className="wdw-btn">{I.download || '↓'} Download ZIP · ~84 MB</div>
+      </SettingRow>
+      <SettingRow label="Per-vehicle PDF report" sub="Build-sheet style PDF for selling or handing off a vehicle.">
+        <div className="wdw-row" style={{ gap: 6 }}>
+          <select className="wdw-input" style={{ width: 220 }}>{window.FLEET.map(v => <option key={v.id}>{v.name}</option>)}</select>
+          <div className="wdw-btn wdw-btn-primary">Generate PDF</div>
+        </div>
+      </SettingRow>
+      <SettingRow label="API access" sub="Personal tokens for webhooks & custom integrations.">
+        <div className="wdw-row" style={{ gap: 6, alignItems: 'center' }}>
+          <div className="wdw-mono wdw-small" style={{ padding: '5px 10px', background: WDW.paperAlt, borderRadius: 4 }}>fa_live_••••••••_jX4k</div>
+          <div className="wdw-btn wdw-btn-sm">Rotate</div>
+        </div>
+      </SettingRow>
+    </div>
+  );
+}
+window.SettingsScreen = SettingsScreen;
+
+// ═══════════════════ Profile ═══════════════════
+function ProfileScreen({ onOpenUnfiled }) {
+  const [, force] = React.useReducer(x => x + 1, 0);
+  const user = window.__userProfile;
+  const site = window.__siteConfig;
+
+  const update = (patch) => {
+    window.__userProfile = { ...user, ...patch };
+    localStorage.setItem('wdw_user_profile', JSON.stringify(window.__userProfile));
+    if (patch.theme) applyPalette(resolvePalette(patch.theme, site));
+    if (window.__rerenderApp) window.__rerenderApp();
+    force();
+  };
+
+  const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+  return (
+    <div className="wdw" style={{ display: 'flex', flexDirection: 'column' }}>
+      <WdwTopNav active="" onCmd={onOpenUnfiled} />
+      <div style={{ flex: 1, overflow: 'auto', padding: '24px 32px 40px' }}>
+        <div style={{ maxWidth: 780, margin: '0 auto' }}>
+
+          <div className="wdw-row" style={{ gap: 18, marginBottom: 28 }}>
+            <UserAvatar user={user} size={64} />
+            <div>
+              <div className="wdw-h1">{user.name}</div>
+              <div className="wdw-small wdw-muted wdw-mono" style={{ marginTop: 2 }}>{user.email}</div>
+              <div className="wdw-row" style={{ gap: 6, marginTop: 6 }}>
+                {user.isAdmin && <span className="wdw-chip" style={{ background: WDW.tealSoft, color: WDW.tealDeep }}>Admin</span>}
+                <span className="wdw-chip">Owner</span>
+              </div>
+            </div>
+          </div>
+
+          <ProfileSection title="Identity" sub="Shown on logs, receipts, and exported reports.">
+            <ProfileRow label="Avatar" sub="Optional image. JPG / PNG / SVG, square looks best. Stored locally in your browser.">
+              <AvatarUploader user={user} onChange={dataUrl => update({ avatar: dataUrl })} />
+            </ProfileRow>
+            <ProfileRow label="Display name">
+              <input className="wdw-input" defaultValue={user.name} onBlur={e => update({ name: e.target.value })} style={{ width: 300 }} />
+            </ProfileRow>
+            <ProfileRow label="Email" sub="Used by the 'Performed by' dropdown and webhooks.">
+              <input className="wdw-input wdw-mono" defaultValue={user.email} onBlur={e => update({ email: e.target.value })} style={{ width: 320, fontSize: 12 }} />
+            </ProfileRow>
+            <ProfileRow label="Initials" sub="Shows in the top-right avatar.">
+              <input className="wdw-input wdw-mono" defaultValue={user.initials} onBlur={e => update({ initials: (e.target.value || '').slice(0,2).toUpperCase() })} style={{ width: 80, textAlign: 'center' }} maxLength={2} />
+            </ProfileRow>
+          </ProfileSection>
+
+          <ProfileSection title="Appearance" sub="Applies to your browser only. Site colors are set by an admin.">
+            <ProfileRow label="Theme" sub={user.theme === 'auto' ? `Auto follows your OS — currently ${systemDark ? 'dark' : 'light'}.` : 'Forced regardless of OS setting.'}>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {[['light','Light'],['dark','Dark'],['auto','Auto']].map(([k, label]) => (
+                  <div key={k} onClick={() => update({ theme: k })} className="wdw-click" style={{
+                    padding: '8px 16px', borderRadius: 5, fontSize: 13, fontWeight: 500,
+                    background: user.theme === k ? WDW.ink : WDW.card,
+                    color: user.theme === k ? '#fff' : WDW.ink2,
+                    border: `1px solid ${user.theme === k ? WDW.ink : WDW.line}`,
+                    minWidth: 80, textAlign: 'center',
+                  }}>{label}</div>
+                ))}
+              </div>
+            </ProfileRow>
+            <ProfileRow label="Density" sub="Tighter spacing — fits more on screen.">
+              <div style={{ display: 'flex', gap: 6 }}>
+                {[['comfortable','Comfortable'],['compact','Compact']].map(([k, label]) => (
+                  <div key={k} onClick={() => update({ density: k })} className="wdw-click" style={{
+                    padding: '8px 14px', borderRadius: 5, fontSize: 13, fontWeight: 500,
+                    background: user.density === k ? WDW.ink : WDW.card,
+                    color: user.density === k ? '#fff' : WDW.ink2,
+                    border: `1px solid ${user.density === k ? WDW.ink : WDW.line}`,
+                  }}>{label}</div>
+                ))}
+              </div>
+            </ProfileRow>
+          </ProfileSection>
+
+          <ProfileSection title="Preferences">
+            <ProfileRow label="Default vehicle" sub="Preselected in new-task and fuel forms.">
+              <select className="wdw-input" style={{ width: 260 }}>
+                <option>Ask every time</option>
+                {window.FLEET.map(v => <option key={v.id}>{v.name}</option>)}
+              </select>
+            </ProfileRow>
+            <ProfileRow label="Distance units" sub="Overrides the site default just for you.">
+              <select className="wdw-input" style={{ width: 180 }}>
+                <option>Use site default (mi)</option>
+                <option>Miles</option>
+                <option>Kilometers</option>
+              </select>
+            </ProfileRow>
+            <ProfileRow label="Keyboard shortcuts" sub="⌘K for command palette, G→F to go to Fleet, etc.">
+              <Toggle on />
+            </ProfileRow>
+            <ProfileRow label="Daily digest email" sub="Summary of reminders due in the next 14 days.">
+              <Toggle />
+            </ProfileRow>
+          </ProfileSection>
+
+          <ProfileSection title="Security">
+            <ProfileRow label="Sign-in method" sub="Set by your admin. Cannot be changed here.">
+              <div className="wdw-small" style={{ padding: '6px 10px', background: WDW.paperAlt, borderRadius: 4, display: 'inline-block' }}>Local password</div>
+            </ProfileRow>
+            <ProfileRow label="Change password">
+              <div className="wdw-btn">Update…</div>
+            </ProfileRow>
+            <ProfileRow label="Active sessions">
+              <div className="wdw-card-soft" style={{ padding: 10, maxWidth: 420 }}>
+                <div className="wdw-row" style={{ gap: 8 }}>
+                  <div style={{ width: 6, height: 6, borderRadius: 3, background: WDW.good }} />
+                  <div className="wdw-small" style={{ fontWeight: 500 }}>This browser</div>
+                  <div style={{ flex: 1 }} />
+                  <div className="wdw-tiny wdw-muted wdw-mono">192.168.4.12 · now</div>
+                </div>
+                <div className="wdw-row" style={{ gap: 8, marginTop: 6 }}>
+                  <div style={{ width: 6, height: 6, borderRadius: 3, background: WDW.muted }} />
+                  <div className="wdw-small">iPhone 15 · Safari</div>
+                  <div style={{ flex: 1 }} />
+                  <div className="wdw-tiny wdw-muted wdw-mono">2 days ago</div>
+                </div>
+              </div>
+            </ProfileRow>
+          </ProfileSection>
+
+          <div style={{ marginTop: 30, paddingTop: 20, borderTop: `1px solid ${WDW.line}` }}>
+            <div className="wdw-btn" style={{ color: WDW.bad, borderColor: WDW.bad }}>End all sessions</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProfileSection({ title, sub, children }) {
+  return (
+    <div style={{ marginBottom: 28 }}>
+      <div className="wdw-h2" style={{ marginBottom: 2 }}>{title}</div>
+      {sub && <div className="wdw-small wdw-muted" style={{ marginBottom: 14 }}>{sub}</div>}
+      <div className="wdw-card" style={{ padding: '4px 18px' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+function AvatarUploader({ user, onChange }) {
+  const fileRef = React.useRef(null);
+  const [busy, setBusy] = React.useState(false);
+
+  const onPick = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    if (f.size > 2 * 1024 * 1024) {
+      alert('Please pick an image under 2 MB.');
+      return;
+    }
+    setBusy(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const src = reader.result;
+      // Scale + re-encode to keep localStorage happy.
+      const img = new Image();
+      img.onload = () => {
+        const max = 256;
+        const scale = Math.min(1, max / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        try {
+          const out = canvas.toDataURL('image/jpeg', 0.88);
+          onChange(out);
+        } catch (err) {
+          onChange(src); // fall back to original (e.g. SVG)
+        }
+        setBusy(false);
+        if (fileRef.current) fileRef.current.value = '';
+      };
+      img.onerror = () => {
+        // Not raster — SVG etc. Pass through.
+        onChange(src);
+        setBusy(false);
+        if (fileRef.current) fileRef.current.value = '';
+      };
+      img.src = src;
+    };
+    reader.readAsDataURL(f);
+  };
+
+  return (
+    <div className="wdw-row" style={{ gap: 14, alignItems: 'center' }}>
+      <UserAvatar user={user} size={56} />
+      <div className="wdw-col" style={{ gap: 6 }}>
+        <div className="wdw-row" style={{ gap: 6 }}>
+          <div className="wdw-btn wdw-btn-sm" onClick={() => fileRef.current && fileRef.current.click()}>
+            {busy ? 'Processing…' : (user.avatar ? 'Replace…' : 'Upload image…')}
+          </div>
+          {user.avatar && (
+            <div className="wdw-btn wdw-btn-sm" onClick={() => onChange(null)} style={{ color: WDW.bad, borderColor: WDW.bad }}>Remove</div>
+          )}
+        </div>
+        <div className="wdw-tiny wdw-muted">
+          {user.avatar
+            ? 'Falls back to initials anywhere the image can’t be shown.'
+            : 'Using initials “' + (user.initials || '??') + '” on a teal disc.'}
+        </div>
+      </div>
+      <input ref={fileRef} type="file" accept="image/*" onChange={onPick} style={{ display: 'none' }} />
+    </div>
+  );
+}
+
+function ProfileRow({ label, sub, children }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 20, padding: '16px 0', borderBottom: `1px solid ${WDW.line}` }}>
+      <div>
+        <div className="wdw-small" style={{ fontWeight: 500 }}>{label}</div>
+        {sub && <div className="wdw-tiny wdw-muted" style={{ marginTop: 3, lineHeight: 1.4 }}>{sub}</div>}
+      </div>
+      <div>{children}</div>
+    </div>
+  );
+}
+window.ProfileScreen = ProfileScreen;
+
+
+
+
+function App() {
+      const [route, setRoute] = useState(() => {
+        try { return JSON.parse(localStorage.getItem(KEY)) || { screen: 'fleet' }; }
+        catch(e) { return { screen: 'fleet' }; }
+      });
+      const [overlay, setOverlay] = useState(null); // 'log' | 'fuel' | null
+      const [, forceApp] = React.useReducer(x => x + 1, 0);
+      React.useEffect(() => { window.__rerenderApp = forceApp; return () => { window.__rerenderApp = null; }; }, []);
+      // Track OS theme → re-resolve when user is on 'auto'
+      React.useEffect(() => {
+        const mq = window.matchMedia('(prefers-color-scheme: dark)');
+        const handler = () => {
+          if ((window.__userProfile || {}).theme === 'auto') {
+            applyPalette(resolvePalette('auto', window.__siteConfig));
+            forceApp();
+          }
+        };
+        mq.addEventListener('change', handler);
+        return () => mq.removeEventListener('change', handler);
+      }, []);
+      const [toast, setToast] = useState(null);
+
+      useEffect(() => { localStorage.setItem(KEY, JSON.stringify(route)); }, [route]);
+      useEffect(() => {
+        if (!toast) return;
+        const t = setTimeout(() => setToast(null), 2400);
+        return () => clearTimeout(t);
+      }, [toast]);
+
+      const { FleetScreen, VehicleScreen, LogTaskScreen, FuelScreen, PartsScreen, InboxScreen, RemindersScreen, ExpensesScreen, SettingsScreen, ProfileScreen, WDW, I } = window;
+      const go = (screen, extra = {}) => setRoute({ screen, ...extra });
+      useEffect(() => {
+        window.__wdwNav = (label) => {
+          const m = { 'Fleet': 'fleet', 'Reminders': 'reminders', 'Parts': 'parts', 'Unfiled': 'inbox', 'Reports': 'expenses', 'Profile': 'profile', 'Admin': 'admin', 'Settings': 'admin' };
+          if (m[label]) go(m[label]);
+          else setToast(label + ' screen not yet implemented');
+        };
+      }, []);
+
+      const ctx = {
+        onOpenVehicle: (id) => go('vehicle', { vehicleId: id }),
+        onBack:        () => go('fleet'),
+        onLogTask:     () => setOverlay('log'),
+        onOpenUnfiled:   () => go('inbox'),
+        onOpenDoc:     () => setToast('Document preview not wired — demo only'),
+      };
+
+      return (
+        <div style={{ position: 'relative', height: '100%', width: '100%' }}>
+          {route.screen === 'fleet'   && <FleetScreen {...ctx} />}
+          {route.screen === 'vehicle' && <VehicleScreen vehicleId={route.vehicleId} {...ctx} />}
+          {route.screen === 'parts'   && <PartsScreen {...ctx} />}
+          {route.screen === 'inbox'   && <InboxScreen {...ctx} />}
+          {route.screen === 'reminders' && <RemindersScreen {...ctx} />}
+          {route.screen === 'expenses'  && <ExpensesScreen {...ctx} />}
+          {route.screen === 'settings' && <SettingsScreen {...ctx} />}
+          {route.screen === 'admin'    && <SettingsScreen {...ctx} />}
+          {route.screen === 'profile'  && <ProfileScreen {...ctx} />}
+
+          {overlay === 'log' && (
+            <div style={{ position: 'absolute', inset: 0, zIndex: 20 }}>
+              <LogTaskScreen
+                prefillVehicleId={route.vehicleId}
+                onClose={() => setOverlay(null)}
+                onSaved={() => { setOverlay(null); setToast('Task logged ✓'); }}
+              />
+            </div>
+          )}
+          {overlay === 'fuel' && (
+            <div style={{ position: 'absolute', inset: 0, zIndex: 20 }}>
+              <FuelScreen
+                onClose={() => setOverlay(null)}
+                onSaved={() => { setOverlay(null); setToast('Fill-up logged ✓'); }}
+              />
+            </div>
+          )}
+
+          {/* floating fuel button so it's always reachable (tablet-in-shop pattern) */}
+          {!overlay && (
+            <div onClick={() => setOverlay('fuel')} style={{
+              position: 'absolute', right: 22, bottom: 22, zIndex: 10,
+              padding: '10px 14px', borderRadius: 30, background: WDW.orange, color: '#fff',
+              boxShadow: '0 8px 20px rgba(232,92,43,0.35)',
+              display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+              fontFamily: WDW.sans,
+            }}>
+              {I.camera} Snap fill-up
+            </div>
+          )}
+
+          {/* Quick route pill (for reviewer — hidden chrome) */}
+          <QuickNav route={route} go={go} parts={() => go('parts')} />
+
+          {toast && (
+            <div style={{
+              position: 'absolute', left: '50%', bottom: 80, transform: 'translateX(-50%)', zIndex: 30,
+              background: WDW.ink, color: '#fff', padding: '9px 16px', borderRadius: 20,
+              fontSize: 13, fontFamily: WDW.sans, boxShadow: '0 8px 20px rgba(0,0,0,0.22)',
+            }}>{toast}</div>
+          )}
+        </div>
+      );
+    }
+
+    function QuickNav({ route, go }) {
+      // Tiny reviewer-facing nav strip so you can jump between screens without going through links.
+      const { WDW } = window;
+      const cur = route.screen;
+      const items = [
+        ['fleet',     'Fleet'],
+        ['vehicle',   'Vehicle'],
+        ['reminders', 'Reminders'],
+        ['parts',     'Parts'],
+        ['expenses',  'Reports'],
+        ['inbox',     'Inbox'],
+        ['settings',  'Settings'],
+      ];
+      return (
+        <div style={{
+          position: 'absolute', left: 22, bottom: 22, zIndex: 10,
+          display: 'flex', alignItems: 'center', gap: 2,
+          background: WDW.ink, padding: 4, borderRadius: 20,
+          fontFamily: WDW.sans, boxShadow: '0 8px 20px rgba(0,0,0,0.24)',
+        }}>
+          <div style={{ color: '#fff', fontSize: 10, fontWeight: 600, letterSpacing: 0.6, textTransform: 'uppercase', padding: '0 10px' }}>Jump to</div>
+          {items.map(([k, label]) => (
+            <div key={k} onClick={() => go(k, k === 'vehicle' ? { vehicleId: route.vehicleId || 'f250' } : {})} style={{
+              padding: '5px 12px', borderRadius: 16, fontSize: 11.5, fontWeight: 500, cursor: 'pointer',
+              background: cur === k ? '#fff' : 'transparent',
+              color: cur === k ? WDW.ink : '#d5d7d9',
+            }}>{label}</div>
+          ))}
+        </div>
+      );
+    }
+
+    // Wait for all external babel scripts to finish populating window before mounting
+    function mount() {
+      if (!window.FleetScreen || !window.WDW || !window.ProfileScreen) { setTimeout(mount, 30); return; }
+      ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    }
+    mount();
+  </script>
+</body>
+</html>

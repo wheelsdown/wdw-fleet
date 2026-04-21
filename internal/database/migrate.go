@@ -69,12 +69,16 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 
 		if _, err := tx.Exec(ctx, string(sql)); err != nil {
-			tx.Rollback(ctx)
+			if rbErr := tx.Rollback(ctx); rbErr != nil {
+				slog.WarnContext(ctx, "migration rollback failed", "version", version, "error", rbErr)
+			}
 			return fmt.Errorf("executing migration %s: %w", version, err)
 		}
 
 		if _, err := tx.Exec(ctx, "INSERT INTO schema_migrations (version) VALUES ($1)", version); err != nil {
-			tx.Rollback(ctx)
+			if rbErr := tx.Rollback(ctx); rbErr != nil {
+				slog.WarnContext(ctx, "migration rollback failed", "version", version, "error", rbErr)
+			}
 			return fmt.Errorf("recording migration %s: %w", version, err)
 		}
 

@@ -1,0 +1,397 @@
+# OpenAPI additions for the FleetAware UI
+#
+# This fragment lists the endpoints the UI assumes exist on top of what's
+# already in api/openapi.yaml. Some may already be present — reconcile
+# before adding. Names, verbs, and response shapes match what the
+# prototype queries (search FleetAware.html for the equivalent mock data).
+#
+# All dates: RFC 3339. All IDs: UUID. All money: integer cents.
+
+openapi: 3.1.0
+info:
+  title: wdw-fleet — UI additions
+  version: 0.1.0-draft
+
+paths:
+  /v1/me:
+    get:
+      summary: Current user profile
+      responses:
+        "200": { content: { application/json: { schema: { $ref: "#/components/schemas/UserProfile" } } } }
+    patch:
+      summary: Update current user profile
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:             { type: string }
+                email:            { type: string, format: email }
+                initials:         { type: string, minLength: 1, maxLength: 2 }
+                theme:            { type: string, enum: [light, dark, auto] }
+                density:          { type: string, enum: [comfortable, compact] }
+                defaultVehicleId: { type: string, format: uuid, nullable: true }
+                distanceUnitOverride: { type: string, enum: [mi, km], nullable: true }
+                digestEmail:      { type: boolean }
+                keyboardShortcuts:{ type: boolean }
+      responses:
+        "200": { content: { application/json: { schema: { $ref: "#/components/schemas/UserProfile" } } } }
+
+  /v1/me/avatar:
+    post:
+      summary: Upload avatar image
+      description: |
+        Accepts JPEG, PNG, or SVG up to 2 MB. Server resizes raster images to
+        max 256×256 and stores on configured blob storage. Response returns
+        the stored URL.
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  avatarUrl: { type: string, format: uri }
+    delete:
+      summary: Remove avatar (fall back to initials)
+      responses: { "204": { description: "" } }
+
+  /v1/site:
+    get:
+      summary: Site configuration (public-readable; admin-writable)
+      responses:
+        "200": { content: { application/json: { schema: { $ref: "#/components/schemas/SiteConfig" } } } }
+    patch:
+      summary: Update site config
+      description: Admin only.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SiteConfigPatch" }
+      responses:
+        "200": { content: { application/json: { schema: { $ref: "#/components/schemas/SiteConfig" } } } }
+
+  /v1/crew:
+    get:  { summary: List crew members, responses: { "200": { content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/CrewMember" } } } } } } }
+    post:
+      summary: Add crew member
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/CrewMemberInput" } } } }
+      responses:   { "201": { content: { application/json: { schema: { $ref: "#/components/schemas/CrewMember" } } } } }
+
+  /v1/reminders:
+    get:
+      summary: Upcoming + overdue reminders across the fleet
+      parameters:
+        - { name: status,  in: query, schema: { type: string, enum: [ok, due-soon, overdue] } }
+        - { name: vehicle, in: query, schema: { type: string, format: uuid } }
+        - { name: system,  in: query, schema: { type: string } }
+        - { name: cursor,  in: query, schema: { type: string } }
+        - { name: limit,   in: query, schema: { type: integer, default: 50, maximum: 200 } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:       { type: array, items: { $ref: "#/components/schemas/Reminder" } }
+                  nextCursor:  { type: string, nullable: true }
+
+  /v1/reminders/{id}/complete:
+    post:
+      summary: Log this reminder as done; schedules the next occurrence
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                completedAt: { type: string, format: date-time }
+                odometer:    { type: integer, nullable: true }
+                taskId:      { type: string, format: uuid, nullable: true, description: "Link to the task logged for this completion." }
+      responses: { "200": { content: { application/json: { schema: { $ref: "#/components/schemas/Reminder" } } } } }
+
+  /v1/tasks:
+    post:
+      summary: Log a completed task (form submission from the Log-task modal)
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/TaskInput" } } } }
+      responses:   { "201": { content: { application/json: { schema: { $ref: "#/components/schemas/Task" } } } } }
+
+  /v1/tasks/extract:
+    post:
+      summary: AI chat — extract structured task from free-form conversation
+      description: |
+        Server-side passthrough to Anthropic. The browser posts the chat
+        transcript; server returns a parsed draft Task. Keep API keys
+        server-side — never expose to the browser.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vehicleId:   { type: string, format: uuid }
+                messages:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      role:    { type: string, enum: [user, assistant] }
+                      content: { type: string }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  draft: { $ref: "#/components/schemas/TaskInput" }
+                  reply: { type: string, description: "Assistant's next turn." }
+
+  /v1/fuel:
+    post:
+      summary: Log a fuel fill-up
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/FuelEntryInput" } } } }
+      responses:   { "201": { content: { application/json: { schema: { $ref: "#/components/schemas/FuelEntry" } } } } }
+
+  /v1/fuel/extract:
+    post:
+      summary: OCR / vision extraction from a pump photo
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                photo: { type: string, format: binary }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  gallons:       { type: number, nullable: true }
+                  pricePerUnit:  { type: integer, nullable: true, description: "Cents." }
+                  totalCents:    { type: integer, nullable: true }
+                  confidence:    { type: number, minimum: 0, maximum: 1 }
+
+  /v1/inbox:
+    get:
+      summary: Unfiled items awaiting triage
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [unfiled, routed, rejected] } }
+        - { name: source, in: query, schema: { type: string, enum: [imap, upload, webhook] } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit,  in: query, schema: { type: integer, default: 50 } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:      { type: array, items: { $ref: "#/components/schemas/InboxItem" } }
+                  nextCursor: { type: string, nullable: true }
+
+  /v1/inbox/{id}/route:
+    post:
+      summary: Accept an inbox item and attach it to a vehicle
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [vehicleId]
+              properties:
+                vehicleId: { type: string, format: uuid }
+                taskId:    { type: string, format: uuid, nullable: true }
+      responses: { "200": { content: { application/json: { schema: { $ref: "#/components/schemas/InboxItem" } } } } }
+
+  /v1/inbox/{id}/reject:
+    post:
+      summary: Reject an inbox item (spam, misrouted, etc.)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "204": { description: "" } }
+
+components:
+  schemas:
+    UserProfile:
+      type: object
+      required: [id, name, email, initials, theme, density, isAdmin, role]
+      properties:
+        id:        { type: string, format: uuid }
+        name:      { type: string }
+        email:     { type: string, format: email }
+        initials:  { type: string, minLength: 1, maxLength: 2 }
+        avatarUrl: { type: string, format: uri, nullable: true }
+        theme:     { type: string, enum: [light, dark, auto] }
+        density:   { type: string, enum: [comfortable, compact] }
+        isAdmin:   { type: boolean }
+        role:      { type: string, enum: [owner, mechanic, driver, external] }
+        defaultVehicleId:     { type: string, format: uuid, nullable: true }
+        distanceUnitOverride: { type: string, enum: [mi, km], nullable: true }
+        digestEmail:          { type: boolean }
+        keyboardShortcuts:    { type: boolean }
+
+    SiteConfig:
+      type: object
+      required: [siteTitle, tagline, currency, timezone, distanceUnit, volumeUnit, laborRateCents, fuelTracking]
+      properties:
+        siteTitle:      { type: string }
+        tagline:        { type: string }
+        primaryColor:   { type: string, nullable: true, pattern: '^#[0-9a-fA-F]{6}$' }
+        accentColor:    { type: string, nullable: true, pattern: '^#[0-9a-fA-F]{6}$' }
+        logoUrl:        { type: string, format: uri, nullable: true }
+        address:        { type: string }
+        currency:       { type: string, enum: [USD, CAD, EUR, GBP] }
+        timezone:       { type: string, description: "IANA zone" }
+        distanceUnit:   { type: string, enum: [mi, km] }
+        volumeUnit:     { type: string, enum: [gal, L] }
+        laborRateCents: { type: integer }
+        fuelTracking:   { type: boolean }
+
+    SiteConfigPatch:
+      allOf:
+        - $ref: "#/components/schemas/SiteConfig"
+
+    CrewMember:
+      type: object
+      required: [id, name, role, tasksLogged]
+      properties:
+        id:          { type: string, format: uuid }
+        name:        { type: string }
+        role:        { type: string, enum: [owner, mechanic, driver, external] }
+        tasksLogged: { type: integer }
+
+    CrewMemberInput:
+      type: object
+      required: [name, role]
+      properties:
+        name: { type: string }
+        role: { type: string, enum: [owner, mechanic, driver, external] }
+
+    Reminder:
+      type: object
+      required: [id, vehicleId, title, kind, intervalValue, lastDoneAt, status, system]
+      properties:
+        id:            { type: string, format: uuid }
+        vehicleId:     { type: string, format: uuid }
+        title:         { type: string }
+        kind:          { type: string, enum: [date, odometer, event] }
+        intervalValue: { type: integer, description: "Months, miles, or events depending on kind" }
+        lastDoneAt:    { type: string, format: date-time }
+        lastDoneOdo:   { type: integer, nullable: true }
+        nextDueAt:     { type: string, format: date-time, nullable: true }
+        nextDueOdo:    { type: integer, nullable: true }
+        status:        { type: string, enum: [ok, due-soon, overdue] }
+        system:        { type: string, description: "Engine, Brakes, Drivetrain, etc." }
+
+    TaskInput:
+      type: object
+      required: [vehicleId, taskType, title, loggedAt]
+      properties:
+        vehicleId:    { type: string, format: uuid }
+        taskType:     { type: string, enum: [oil_change, service, repair, inspection, fuel, modification, other] }
+        title:        { type: string }
+        loggedAt:     { type: string, format: date-time }
+        odoAt:        { type: integer, nullable: true }
+        performedBy:  { type: string, description: "Crew-member name or 'outside shop' label" }
+        notes:        { type: string, description: "Markdown" }
+        parts:
+          type: array
+          items:
+            type: object
+            properties:
+              sku:           { type: string, nullable: true }
+              name:          { type: string }
+              qty:           { type: number }
+              unitCostCents: { type: integer }
+        laborHours:     { type: number }
+        laborRateCents: { type: integer }
+        photos:         { type: array, items: { type: string, format: uri } }
+        scheduleNext:
+          type: object
+          nullable: true
+          properties:
+            intervalKind:  { type: string, enum: [date, odometer, event] }
+            intervalValue: { type: integer }
+
+    Task:
+      allOf:
+        - $ref: "#/components/schemas/TaskInput"
+        - type: object
+          required: [id, totalCents]
+          properties:
+            id:         { type: string, format: uuid }
+            totalCents: { type: integer }
+
+    FuelEntryInput:
+      type: object
+      required: [vehicleId, filledAt, gallons, totalCents]
+      properties:
+        vehicleId:      { type: string, format: uuid }
+        filledAt:       { type: string, format: date-time }
+        odometer:       { type: integer, nullable: true }
+        gallons:        { type: number }
+        pricePerUnit:   { type: integer, nullable: true, description: "Cents per gallon/L" }
+        totalCents:     { type: integer }
+        stationName:    { type: string, nullable: true }
+        photo:          { type: string, format: uri, nullable: true }
+        octane:         { type: integer, nullable: true }
+
+    FuelEntry:
+      allOf:
+        - $ref: "#/components/schemas/FuelEntryInput"
+        - type: object
+          required: [id]
+          properties:
+            id: { type: string, format: uuid }
+
+    InboxItem:
+      type: object
+      required: [id, source, sender, subject, receivedAt, status]
+      properties:
+        id:         { type: string, format: uuid }
+        source:     { type: string, enum: [imap, upload, webhook] }
+        sender:     { type: string }
+        subject:    { type: string }
+        receivedAt: { type: string, format: date-time }
+        attachments:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              mime: { type: string }
+              size: { type: integer }
+              url:  { type: string, format: uri }
+        parsed:
+          type: object
+          nullable: true
+          properties:
+            confidence:   { type: number, minimum: 0, maximum: 1 }
+            parser:       { type: string }
+            vehicleGuess: { type: string, format: uuid, nullable: true }
+            vendor:       { type: string, nullable: true }
+            totalCents:   { type: integer, nullable: true }
+            lineItems:
+              type: array
+              items:
+                type: object
+                properties:
+                  sku:        { type: string, nullable: true }
+                  name:       { type: string }
+                  qty:        { type: number, nullable: true }
+                  unitCents:  { type: integer, nullable: true }
+        status: { type: string, enum: [unfiled, routed, rejected] }
