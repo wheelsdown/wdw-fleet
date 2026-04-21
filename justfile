@@ -52,6 +52,38 @@ dev-up:
 dev-down:
     docker compose down
 
-# Build Docker image
+# Build a multi-arch OCI image locally via buildx. Matches CI.
+# Requires: docker buildx (present in recent Docker Desktop / engine).
+# By default loads linux/<host-arch> into the local daemon; pass
+# PLATFORMS=linux/amd64,linux/arm64 PUSH=true to cross-build and push.
 docker-build:
-    docker build -t wdw-fleet:latest .
+    #!/usr/bin/env bash
+    set -euo pipefail
+    VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo dev)"
+    COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+    BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    SOURCE_DATE_EPOCH="$(git log -1 --pretty=%ct 2>/dev/null || date +%s)"
+    PLATFORMS="${PLATFORMS:-linux/$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
+    OUTPUT="${PUSH:+--push}"
+    OUTPUT="${OUTPUT:---load}"
+    # --load only supports a single platform; warn+override if user asked
+    # for multi-arch without --push.
+    if [[ "$PLATFORMS" == *,* && -z "${PUSH:-}" ]]; then
+        echo "note: multi-arch build requires PUSH=true; falling back to single-arch --load"
+        PLATFORMS="linux/$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')"
+    fi
+    docker buildx build \
+        --platform "$PLATFORMS" \
+        --build-arg VERSION="$VERSION" \
+        --build-arg COMMIT="$COMMIT" \
+        --build-arg BUILD_DATE="$BUILD_DATE" \
+        --build-arg SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" \
+        -t wdw-fleet:latest \
+        -t "wdw-fleet:$VERSION" \
+        $OUTPUT \
+        .
+
+# Build both linux/amd64 and linux/arm64 and push to the configured registry.
+# Intended for ad-hoc manual publishing; CI is the normal publish path.
+docker-push:
+    PUSH=true PLATFORMS=linux/amd64,linux/arm64 just docker-build

@@ -12,6 +12,7 @@ import (
 
 	"github.com/wheelsdown/wdw-fleet/internal/config"
 	"github.com/wheelsdown/wdw-fleet/internal/database"
+	"github.com/wheelsdown/wdw-fleet/internal/version"
 )
 
 func main() {
@@ -29,7 +30,11 @@ func run() error {
 
 	setupLogging(cfg.LogLevel)
 
-	slog.Info("starting wdw-fleet", "listen_addr", cfg.ListenAddr)
+	slog.Info("starting wdw-fleet",
+		"version", version.Version,
+		"commit", version.Commit,
+		"build_date", version.BuildDate,
+		"listen_addr", cfg.ListenAddr)
 
 	db, err := database.Connect(context.Background(), cfg.DatabaseURL)
 	if err != nil {

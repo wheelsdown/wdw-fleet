@@ -1,0 +1,103 @@
+name: Image
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}   # wheelsdown/wdw-fleet
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      # id-token: write  # enable later for cosign keyless signing
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need tags for `git describe`
+
+      - name: Set up QEMU (multi-arch emulation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute build metadata
+        id: buildmeta
+        run: |
+          VERSION="$(git describe --tags --always --dirty)"
+          COMMIT="$(git rev-parse --short HEAD)"
+          BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          SOURCE_DATE_EPOCH="$(git log -1 --pretty=%ct)"
+          {
+            echo "version=$VERSION"
+            echo "commit=$COMMIT"
+            echo "build_date=$BUILD_DATE"
+            echo "source_date_epoch=$SOURCE_DATE_EPOCH"
+          } >> "$GITHUB_OUTPUT"
+
+      # Rich tag matrix per AGENTS.md § Deployment:
+      #   vX.Y.Z, vX.Y, vX       on tag pushes
+      #   latest                 on tag pushes, never prerelease
+      #   sha-<shortsha>         on every build
+      #   main                   on push to main
+      #   edge                   on push to main (rolling prerelease channel)
+      #   pr-N                   on pull_request (build only, no push)
+      - name: Extract Docker metadata (tags + labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,prefix=sha-,format=short
+            type=raw,value=edge,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
+          labels: |
+            org.opencontainers.image.title=wdw-fleet
+            org.opencontainers.image.description=API-first vehicle fleet management service (FleetAware)
+            org.opencontainers.image.vendor=Wheels Down Workshop
+            org.opencontainers.image.licenses=MIT
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.buildmeta.outputs.version }}
+            COMMIT=${{ steps.buildmeta.outputs.commit }}
+            BUILD_DATE=${{ steps.buildmeta.outputs.build_date }}
+            SOURCE_DATE_EPOCH=${{ steps.buildmeta.outputs.source_date_epoch }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
