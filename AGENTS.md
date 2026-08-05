@@ -124,17 +124,65 @@ rely on GitHub Actions to catch what you could have caught locally.
   (see *Deployment* below).
 - **Layers.**
   - `cmd/wdw-fleet/` — entry point, wiring
-  - `internal/api/` — HTTP handlers + OpenAPI-generated code
-  - `internal/config/` — env-var loading
+  - `internal/config/` — env-var loading (all `WDW_*` in one place)
   - `internal/database/` — pgx pool, embedded migrations
-  - `internal/model/` — domain types (rebuilt after schema stabilizes)
-  - `internal/service/` — business logic (thin; most work is SQL)
-  - `internal/webhook/` — outbound dispatch; IMAP parsers
-    under `internal/webhook/parsers/`
+  - `internal/model/` — storage-shaped domain types (mirror DB rows)
+  - `internal/store/` — pgx queries per domain (`vehicles.go`, ...)
+    - Each type declares its methods; the api-package handler declares
+      a narrow interface for what it needs. Tests pass a fake.
+  - `internal/blob/` — byte-stream persistence (photos, attachments,
+    IMAP raw messages). Local-filesystem impl; S3-compatible drop-in
+    when needed.
+  - `internal/server/api/` — HTTP handlers, DTOs, projection funcs,
+    and the route table.
+    - `routes.go` — the validated route table (source of truth).
+    - `server.go` — Server struct + Handler() + writeJSON helper.
+    - `problem.go` — Problem envelope + writeProblem + Code* consts.
+    - `<resource>.go` — DTOs + handlers + store interface per domain.
+    - `spec/openapi.{yaml,json}` — generated; do not hand-edit.
+  - `internal/tools/openapigen/` — the spec generator.
+  - `internal/version/` — build-time version metadata.
+  - Future: `internal/webhook/` (outbound dispatch + IMAP parsers
+    under `webhook/parsers/`) once the ingestion pass lands.
 - **Frontend** (planned, not yet built): served via `embed.FS` from the
   same binary. See [`docs/design/`](docs/design/) for the FleetAware
   UI spec — it's the source of truth for look, behavior, and component
   anatomy. Stack (React+Vite+TS vs. HTMX+templates) not yet decided.
+
+## Adding a new resource
+
+The vehicles vertical slice is the pattern. To land, say, fuel logs:
+
+1. **Model.** Add `internal/model/fuel_log.go` mirroring the DB row
+   (pointer fields for nullable columns, `json.RawMessage` for JSONB,
+   slices for arrays).
+2. **Store.** Add `internal/store/fuel_logs.go` with a type wrapping
+   the pool and methods (`Create`, `Get`, `List`, `Update`, `Delete`,
+   plus domain-specific queries like `LastFullFill`, `EconomySeries`).
+   Return `ErrNotFound` for missing rows. Build dynamic `UPDATE`
+   `SET` clauses from a sparse `<Resource>Update` struct.
+3. **DTOs + handlers.** Add `internal/server/api/fuel_logs.go`.
+   Define `FuelLogResponse`, `FuelLogListResponse`, `FuelLogCreateInput`,
+   `FuelLogUpdateInput`; use `openapi:"..."` struct tags for enum /
+   format / readOnly metadata the generator can't infer. Declare a
+   narrow `FuelLogStore` interface at the handler's point of use.
+   Add handler methods on `*Server`. Wire failure paths through
+   `writeProblem` with the appropriate `Code*` constant.
+4. **Routes.** Add entries to `Routes()` in `routes.go`; add a tag
+   constant + `RouteTags()` entry if the resource lives in a new
+   sidebar cluster.
+5. **Server field + main.go wiring.** Add the interface field to
+   `Server`; wire `store.NewFuelLogs(db)` in `main.go`.
+6. **Tests.** Add `fuel_logs_test.go` with an in-memory
+   `fakeFuelLogStore` and `httptest`-driven handler coverage. Test
+   the failure modes (`entity.not_found`, `validation.failed`,
+   `request.bad`) — every one saves a real caller a debugging round.
+7. **Regenerate + verify.** `just generate` produces the updated
+   spec; `just ci` gates fmt / lint / drift / test / build. End-to-end
+   smoke test against a fresh Postgres via `just dev-up` +
+   `./bin/wdw-fleet` + `curl`.
+8. **Commit.** Include the regenerated spec files in the same commit
+   as the handler changes. `just generate-check` fails CI if you don't.
 
 ## Deployment
 
