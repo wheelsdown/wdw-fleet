@@ -12,6 +12,7 @@ import (
 
 	"github.com/wheelsdown/wdw-fleet/internal/config"
 	"github.com/wheelsdown/wdw-fleet/internal/database"
+	"github.com/wheelsdown/wdw-fleet/internal/server/api"
 	"github.com/wheelsdown/wdw-fleet/internal/version"
 )
 
@@ -46,17 +47,14 @@ func run() error {
 		return fmt.Errorf("running migrations: %w", err)
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
-			slog.DebugContext(r.Context(), "healthz write failed", "error", err)
-		}
-	})
+	apiServer := &api.Server{
+		DB:     db,
+		Logger: slog.Default(),
+	}
 
 	srv := &http.Server{
 		Addr:         cfg.ListenAddr,
-		Handler:      mux,
+		Handler:      apiServer.Handler(),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
