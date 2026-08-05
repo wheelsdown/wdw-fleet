@@ -54,6 +54,10 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: latest
+          # Build golangci-lint from source with the runner's Go so
+          # its Go version matches go.mod's (avoids "linter built with
+          # go1.24 refuses to lint go1.26.1 code" errors).
+          install-mode: goinstall
 
       - name: Test
         run: go test -race -coverprofile=coverage.out ./...
