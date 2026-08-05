@@ -181,9 +181,14 @@ func buildDocument(routes []api.Route) (*Document, error) {
 		doc.Tags = append(doc.Tags, Tag{Name: tag.Name, Description: tag.Description})
 	}
 
-	// Shared Problem envelope. Every operation gets a `default` response
-	// referencing this.
-	doc.Components.Schemas["Problem"] = problemSchema()
+	// Shared Problem envelope. Reflected from the real Go type so the
+	// spec and the wire format stay in sync automatically; every
+	// operation gets a `default` response referencing this schema.
+	problem, err := SchemaFromType(reflect.TypeOf(api.Problem{}))
+	if err != nil {
+		return nil, fmt.Errorf("reflecting Problem: %w", err)
+	}
+	doc.Components.Schemas["Problem"] = problem
 
 	for _, rt := range routes {
 		if err := addRoute(doc, rt); err != nil {
@@ -267,21 +272,6 @@ func statusDescription(code int) string {
 		return s
 	}
 	return http.StatusText(code)
-}
-
-func problemSchema() *Schema {
-	return &Schema{
-		Type: "object",
-		Properties: map[string]*Schema{
-			"type":     {Type: "string", Format: "uri", Description: "Problem type URI."},
-			"title":    {Type: "string", Description: "Short human-readable summary."},
-			"status":   {Type: "integer", Format: "int32", Description: "HTTP status code."},
-			"detail":   {Type: "string", Description: "Human-readable explanation."},
-			"instance": {Type: "string", Format: "uri", Description: "URI identifying this occurrence."},
-			"code":     {Type: "string", Description: "Machine-readable error code."},
-		},
-		Required: []string{"title", "status", "code"},
-	}
 }
 
 // Marshaling ---------------------------------------------------------

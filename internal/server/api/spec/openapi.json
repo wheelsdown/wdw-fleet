@@ -176,7 +176,7 @@
           },
           "detail": {
             "type": "string",
-            "description": "Human-readable explanation."
+            "description": "Human-readable explanation of this occurrence."
           },
           "instance": {
             "type": "string",
