@@ -163,6 +163,1147 @@
         },
         "x-wdw-auth": "public"
       }
+    },
+    "/v1/vehicles": {
+      "get": {
+        "operationId": "listVehicles",
+        "summary": "List every non-deleted vehicle in the fleet.",
+        "tags": [
+          "Fleet"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "acquisition_cost_cents": {
+                            "type": "integer",
+                            "format": "int32",
+                            "nullable": true
+                          },
+                          "acquisition_date": {
+                            "type": "string",
+                            "format": "date",
+                            "nullable": true
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "format": "date-time",
+                            "readOnly": true
+                          },
+                          "custom_fields": {
+                            "type": "object",
+                            "additionalProperties": true
+                          },
+                          "glyph": {
+                            "type": "string",
+                            "enum": [
+                              "truck",
+                              "tractor",
+                              "atv",
+                              "trailer",
+                              "gen",
+                              "car",
+                              "track",
+                              "race"
+                            ]
+                          },
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "readOnly": true
+                          },
+                          "license_plate": {
+                            "type": "string"
+                          },
+                          "make": {
+                            "type": "string"
+                          },
+                          "model": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "notes": {
+                            "type": "string"
+                          },
+                          "odometer": {
+                            "type": "integer",
+                            "format": "int32"
+                          },
+                          "odometer_unit": {
+                            "type": "string",
+                            "enum": [
+                              "mi",
+                              "km",
+                              "hr",
+                              "events"
+                            ]
+                          },
+                          "photo_url": {
+                            "type": "string"
+                          },
+                          "sale_date": {
+                            "type": "string",
+                            "format": "date",
+                            "nullable": true
+                          },
+                          "sale_price_cents": {
+                            "type": "integer",
+                            "format": "int32",
+                            "nullable": true
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "active",
+                              "inactive",
+                              "sold"
+                            ]
+                          },
+                          "tags": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "updated_at": {
+                            "type": "string",
+                            "format": "date-time",
+                            "readOnly": true
+                          },
+                          "vin": {
+                            "type": "string"
+                          },
+                          "year": {
+                            "type": "integer",
+                            "format": "int32",
+                            "nullable": true
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "make",
+                          "model",
+                          "vin",
+                          "license_plate",
+                          "glyph",
+                          "odometer",
+                          "odometer_unit",
+                          "status",
+                          "notes",
+                          "custom_fields",
+                          "photo_url",
+                          "tags",
+                          "created_at",
+                          "updated_at"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (RFC 7807 problem+json).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-wdw-auth": "public"
+      },
+      "post": {
+        "operationId": "createVehicle",
+        "summary": "Create a vehicle.",
+        "tags": [
+          "Fleet"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "acquisition_cost_cents": {
+                    "type": "integer",
+                    "format": "int32",
+                    "nullable": true
+                  },
+                  "acquisition_date": {
+                    "type": "string",
+                    "format": "date",
+                    "nullable": true
+                  },
+                  "custom_fields": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "glyph": {
+                    "type": "string",
+                    "enum": [
+                      "truck",
+                      "tractor",
+                      "atv",
+                      "trailer",
+                      "gen",
+                      "car",
+                      "track",
+                      "race"
+                    ]
+                  },
+                  "license_plate": {
+                    "type": "string"
+                  },
+                  "make": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "notes": {
+                    "type": "string"
+                  },
+                  "odometer": {
+                    "type": "integer",
+                    "format": "int32",
+                    "nullable": true
+                  },
+                  "odometer_unit": {
+                    "type": "string",
+                    "enum": [
+                      "mi",
+                      "km",
+                      "hr",
+                      "events"
+                    ]
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "active",
+                      "inactive",
+                      "sold"
+                    ]
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "vin": {
+                    "type": "string"
+                  },
+                  "year": {
+                    "type": "integer",
+                    "format": "int32",
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "acquisition_cost_cents": {
+                      "type": "integer",
+                      "format": "int32",
+                      "nullable": true
+                    },
+                    "acquisition_date": {
+                      "type": "string",
+                      "format": "date",
+                      "nullable": true
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "custom_fields": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "glyph": {
+                      "type": "string",
+                      "enum": [
+                        "truck",
+                        "tractor",
+                        "atv",
+                        "trailer",
+                        "gen",
+                        "car",
+                        "track",
+                        "race"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "readOnly": true
+                    },
+                    "license_plate": {
+                      "type": "string"
+                    },
+                    "make": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "notes": {
+                      "type": "string"
+                    },
+                    "odometer": {
+                      "type": "integer",
+                      "format": "int32"
+                    },
+                    "odometer_unit": {
+                      "type": "string",
+                      "enum": [
+                        "mi",
+                        "km",
+                        "hr",
+                        "events"
+                      ]
+                    },
+                    "photo_url": {
+                      "type": "string"
+                    },
+                    "sale_date": {
+                      "type": "string",
+                      "format": "date",
+                      "nullable": true
+                    },
+                    "sale_price_cents": {
+                      "type": "integer",
+                      "format": "int32",
+                      "nullable": true
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "active",
+                        "inactive",
+                        "sold"
+                      ]
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "vin": {
+                      "type": "string"
+                    },
+                    "year": {
+                      "type": "integer",
+                      "format": "int32",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "make",
+                    "model",
+                    "vin",
+                    "license_plate",
+                    "glyph",
+                    "odometer",
+                    "odometer_unit",
+                    "status",
+                    "notes",
+                    "custom_fields",
+                    "photo_url",
+                    "tags",
+                    "created_at",
+                    "updated_at"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (RFC 7807 problem+json).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-wdw-auth": "public"
+      }
+    },
+    "/v1/vehicles/{id}": {
+      "get": {
+        "operationId": "getVehicle",
+        "summary": "Fetch one vehicle by id.",
+        "tags": [
+          "Fleet"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "acquisition_cost_cents": {
+                      "type": "integer",
+                      "format": "int32",
+                      "nullable": true
+                    },
+                    "acquisition_date": {
+                      "type": "string",
+                      "format": "date",
+                      "nullable": true
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "custom_fields": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "glyph": {
+                      "type": "string",
+                      "enum": [
+                        "truck",
+                        "tractor",
+                        "atv",
+                        "trailer",
+                        "gen",
+                        "car",
+                        "track",
+                        "race"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "readOnly": true
+                    },
+                    "license_plate": {
+                      "type": "string"
+                    },
+                    "make": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "notes": {
+                      "type": "string"
+                    },
+                    "odometer": {
+                      "type": "integer",
+                      "format": "int32"
+                    },
+                    "odometer_unit": {
+                      "type": "string",
+                      "enum": [
+                        "mi",
+                        "km",
+                        "hr",
+                        "events"
+                      ]
+                    },
+                    "photo_url": {
+                      "type": "string"
+                    },
+                    "sale_date": {
+                      "type": "string",
+                      "format": "date",
+                      "nullable": true
+                    },
+                    "sale_price_cents": {
+                      "type": "integer",
+                      "format": "int32",
+                      "nullable": true
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "active",
+                        "inactive",
+                        "sold"
+                      ]
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "vin": {
+                      "type": "string"
+                    },
+                    "year": {
+                      "type": "integer",
+                      "format": "int32",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "make",
+                    "model",
+                    "vin",
+                    "license_plate",
+                    "glyph",
+                    "odometer",
+                    "odometer_unit",
+                    "status",
+                    "notes",
+                    "custom_fields",
+                    "photo_url",
+                    "tags",
+                    "created_at",
+                    "updated_at"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (RFC 7807 problem+json).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-wdw-auth": "public"
+      },
+      "patch": {
+        "operationId": "updateVehicle",
+        "summary": "Apply a sparse patch to a vehicle.",
+        "tags": [
+          "Fleet"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "acquisition_cost_cents": {
+                    "type": "integer",
+                    "format": "int32",
+                    "nullable": true
+                  },
+                  "acquisition_date": {
+                    "type": "string",
+                    "format": "date",
+                    "nullable": true
+                  },
+                  "custom_fields": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "glyph": {
+                    "type": "string",
+                    "nullable": true,
+                    "enum": [
+                      "truck",
+                      "tractor",
+                      "atv",
+                      "trailer",
+                      "gen",
+                      "car",
+                      "track",
+                      "race"
+                    ]
+                  },
+                  "license_plate": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "make": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "model": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "notes": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "odometer": {
+                    "type": "integer",
+                    "format": "int32",
+                    "nullable": true
+                  },
+                  "odometer_unit": {
+                    "type": "string",
+                    "nullable": true,
+                    "enum": [
+                      "mi",
+                      "km",
+                      "hr",
+                      "events"
+                    ]
+                  },
+                  "sale_date": {
+                    "type": "string",
+                    "format": "date",
+                    "nullable": true
+                  },
+                  "sale_price_cents": {
+                    "type": "integer",
+                    "format": "int32",
+                    "nullable": true
+                  },
+                  "status": {
+                    "type": "string",
+                    "nullable": true,
+                    "enum": [
+                      "active",
+                      "inactive",
+                      "sold"
+                    ]
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "nullable": true
+                  },
+                  "vin": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "year": {
+                    "type": "integer",
+                    "format": "int32",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "acquisition_cost_cents": {
+                      "type": "integer",
+                      "format": "int32",
+                      "nullable": true
+                    },
+                    "acquisition_date": {
+                      "type": "string",
+                      "format": "date",
+                      "nullable": true
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "custom_fields": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "glyph": {
+                      "type": "string",
+                      "enum": [
+                        "truck",
+                        "tractor",
+                        "atv",
+                        "trailer",
+                        "gen",
+                        "car",
+                        "track",
+                        "race"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "readOnly": true
+                    },
+                    "license_plate": {
+                      "type": "string"
+                    },
+                    "make": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "notes": {
+                      "type": "string"
+                    },
+                    "odometer": {
+                      "type": "integer",
+                      "format": "int32"
+                    },
+                    "odometer_unit": {
+                      "type": "string",
+                      "enum": [
+                        "mi",
+                        "km",
+                        "hr",
+                        "events"
+                      ]
+                    },
+                    "photo_url": {
+                      "type": "string"
+                    },
+                    "sale_date": {
+                      "type": "string",
+                      "format": "date",
+                      "nullable": true
+                    },
+                    "sale_price_cents": {
+                      "type": "integer",
+                      "format": "int32",
+                      "nullable": true
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "active",
+                        "inactive",
+                        "sold"
+                      ]
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "vin": {
+                      "type": "string"
+                    },
+                    "year": {
+                      "type": "integer",
+                      "format": "int32",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "make",
+                    "model",
+                    "vin",
+                    "license_plate",
+                    "glyph",
+                    "odometer",
+                    "odometer_unit",
+                    "status",
+                    "notes",
+                    "custom_fields",
+                    "photo_url",
+                    "tags",
+                    "created_at",
+                    "updated_at"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (RFC 7807 problem+json).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-wdw-auth": "public"
+      },
+      "delete": {
+        "operationId": "deleteVehicle",
+        "summary": "Soft-delete a vehicle. Stamps deleted_at; row remains for audit.",
+        "tags": [
+          "Fleet"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "default": {
+            "description": "Error (RFC 7807 problem+json).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-wdw-auth": "public"
+      }
+    },
+    "/v1/vehicles/{id}/photo": {
+      "get": {
+        "operationId": "getVehiclePhoto",
+        "summary": "Stream the primary photo bytes with an appropriate image/* Content-Type.",
+        "tags": [
+          "Fleet"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (RFC 7807 problem+json).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-wdw-auth": "public"
+      },
+      "put": {
+        "operationId": "putVehiclePhoto",
+        "summary": "Upload or replace the primary photo. Body is raw image bytes; Content-Type identifies the image format.",
+        "tags": [
+          "Fleet"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "acquisition_cost_cents": {
+                      "type": "integer",
+                      "format": "int32",
+                      "nullable": true
+                    },
+                    "acquisition_date": {
+                      "type": "string",
+                      "format": "date",
+                      "nullable": true
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "custom_fields": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "glyph": {
+                      "type": "string",
+                      "enum": [
+                        "truck",
+                        "tractor",
+                        "atv",
+                        "trailer",
+                        "gen",
+                        "car",
+                        "track",
+                        "race"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "readOnly": true
+                    },
+                    "license_plate": {
+                      "type": "string"
+                    },
+                    "make": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "notes": {
+                      "type": "string"
+                    },
+                    "odometer": {
+                      "type": "integer",
+                      "format": "int32"
+                    },
+                    "odometer_unit": {
+                      "type": "string",
+                      "enum": [
+                        "mi",
+                        "km",
+                        "hr",
+                        "events"
+                      ]
+                    },
+                    "photo_url": {
+                      "type": "string"
+                    },
+                    "sale_date": {
+                      "type": "string",
+                      "format": "date",
+                      "nullable": true
+                    },
+                    "sale_price_cents": {
+                      "type": "integer",
+                      "format": "int32",
+                      "nullable": true
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "active",
+                        "inactive",
+                        "sold"
+                      ]
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "vin": {
+                      "type": "string"
+                    },
+                    "year": {
+                      "type": "integer",
+                      "format": "int32",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "make",
+                    "model",
+                    "vin",
+                    "license_plate",
+                    "glyph",
+                    "odometer",
+                    "odometer_unit",
+                    "status",
+                    "notes",
+                    "custom_fields",
+                    "photo_url",
+                    "tags",
+                    "created_at",
+                    "updated_at"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (RFC 7807 problem+json).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-wdw-auth": "public"
+      },
+      "delete": {
+        "operationId": "deleteVehiclePhoto",
+        "summary": "Remove the primary photo. Vehicle itself is unaffected.",
+        "tags": [
+          "Fleet"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "default": {
+            "description": "Error (RFC 7807 problem+json).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-wdw-auth": "public"
+      }
     }
   },
   "components": {

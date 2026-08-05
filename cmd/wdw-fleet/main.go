@@ -10,9 +10,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/wheelsdown/wdw-fleet/internal/blob"
 	"github.com/wheelsdown/wdw-fleet/internal/config"
 	"github.com/wheelsdown/wdw-fleet/internal/database"
 	"github.com/wheelsdown/wdw-fleet/internal/server/api"
+	"github.com/wheelsdown/wdw-fleet/internal/store"
 	"github.com/wheelsdown/wdw-fleet/internal/version"
 )
 
@@ -48,8 +50,10 @@ func run() error {
 	}
 
 	apiServer := &api.Server{
-		DB:     db,
-		Logger: slog.Default(),
+		DB:       db,
+		Logger:   slog.Default(),
+		Blobs:    blob.New(cfg.BlobRoot),
+		Vehicles: store.NewVehicles(db),
 	}
 
 	srv := &http.Server{
