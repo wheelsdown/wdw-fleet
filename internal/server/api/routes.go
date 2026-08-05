@@ -2,12 +2,13 @@
 //
 // The single source of truth for the surface is the [Route] slice
 // returned by [Routes]. [Server.Handler] registers the mux from it
-// and (in a follow-up commit) the openapigen tool will project
-// internal/server/api/spec/openapi.{yaml,json} from it. Every route's
-// metadata (method, path, operation id, summary, tags, auth,
-// request/response shapes) therefore has exactly one home; the mux
-// registration and the generated contract cannot drift.
+// and the openapigen tool projects internal/server/api/spec/openapi.{yaml,json}
+// from it. Every route's metadata (method, path, operation id, summary,
+// tags, auth, request/response shapes) therefore has exactly one home;
+// the mux registration and the generated contract cannot drift.
 package api
+
+//go:generate go run github.com/wheelsdown/wdw-fleet/internal/tools/openapigen -out ./spec
 
 import (
 	"errors"
@@ -150,8 +151,36 @@ func Routes() []Route {
 			ResponseStatuses: []int{http.StatusOK},
 			handler:          bindHandler((*Server).handleHealthz),
 		},
+		{
+			Method:           http.MethodGet,
+			Path:             "/openapi.yaml",
+			OperationID:      "getOpenAPIYAML",
+			Summary:          "The OpenAPI 3.1 contract, YAML serialization.",
+			Tags:             []string{tagSystem},
+			Auth:             AuthPublic,
+			Response:         openAPIRawBody{},
+			ResponseStatuses: []int{http.StatusOK},
+			handler:          bindHandler((*Server).handleOpenAPIYAML),
+		},
+		{
+			Method:           http.MethodGet,
+			Path:             "/openapi.json",
+			OperationID:      "getOpenAPIJSON",
+			Summary:          "The OpenAPI 3.1 contract, JSON serialization.",
+			Tags:             []string{tagSystem},
+			Auth:             AuthPublic,
+			Response:         openAPIRawBody{},
+			ResponseStatuses: []int{http.StatusOK},
+			handler:          bindHandler((*Server).handleOpenAPIJSON),
+		},
 	}
 }
+
+// openAPIRawBody is a placeholder response type for endpoints that
+// serve pre-serialized YAML/JSON blobs. The generator emits an empty
+// object schema for it; a documented-schema entry for a document that
+// describes itself would be recursive.
+type openAPIRawBody struct{}
 
 // PathParams returns the {wildcard} segment names of a ServeMux
 // pattern path, in order of appearance. "{$}" is not a parameter.

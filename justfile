@@ -37,12 +37,27 @@ migrate-up:
 migrate-down:
     go run ./cmd/wdw-fleet migrate down
 
-# Generate code from OpenAPI spec
+# Regenerate all `go generate` outputs (currently just the OpenAPI spec
+# from internal/server/api routes).
 generate:
-    oapi-codegen -package api -generate types,chi-server,spec -o internal/api/openapi.gen.go api/openapi.yaml
+    go generate ./...
 
-# Full CI gate — run before every push
-ci: fmt lint test build
+# Drift gate: regenerate, then fail if the freshly-generated spec
+# differs from the index (i.e. what's committed or staged). Ensures
+# the tracked spec matches the Go route table. Uses `git diff` rather
+# than `git status --porcelain` so a legitimately-staged new spec
+# file (first-commit bootstrap) does not trip the gate.
+generate-check:
+    go generate ./...
+    @if ! git diff --quiet -- internal/server/api/spec; then \
+        echo "openapi spec is out of date; run 'just generate' and commit"; \
+        git --no-pager diff -- internal/server/api/spec; \
+        exit 1; \
+    fi
+
+# Full CI gate — run before every push. Includes the generator drift
+# gate so a stale committed spec fails the build.
+ci: fmt generate-check lint test build
 
 # Start local dev dependencies (PostgreSQL)
 dev-up:

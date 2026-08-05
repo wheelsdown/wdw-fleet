@@ -10,8 +10,11 @@ The web UI ships as **FleetAware** (same codebase; product/UI name).
 Backend service name stays `wdw-fleet`.
 
 If you're here to understand the project, start with
-[api/openapi.yaml](api/openapi.yaml) — it's the contract everything
-else implements or consumes.
+[internal/server/api/routes.go](internal/server/api/routes.go) — the
+validated Go route table is the single source of truth for the HTTP
+surface. The generated OpenAPI 3.1 spec lives at
+[internal/server/api/spec/openapi.yaml](internal/server/api/spec/openapi.yaml)
+and is projected from that route table by `just generate`.
 
 Everything below is what you need to contribute code.
 
@@ -31,7 +34,8 @@ just fmt                # gofmt + goimports
 just dev-up             # Start PostgreSQL (docker compose)
 just dev-down           # Stop PostgreSQL
 just migrate-up         # Apply migrations manually (auto-applied on server start)
-just generate           # Regenerate Go code from api/openapi.yaml
+just generate           # Regenerate OpenAPI spec from Go route table
+just generate-check     # CI drift gate: regenerate + fail on git diff
 ```
 
 `just ci` must pass locally before every push. No exceptions. Don't
@@ -104,9 +108,16 @@ rely on GitHub Actions to catch what you could have caught locally.
 
 ## Architecture at a Glance
 
-- **API-first.** `api/openapi.yaml` is the source of truth. Handlers,
-  typed clients, and the frontend all derive from it. When the API
-  surface changes, update the spec first.
+- **API-first, code-first.** The Go route table at
+  `internal/server/api/routes.go` is the source of truth. Every entry
+  is exhaustively validated; the openapigen tool
+  (`internal/tools/openapigen/`) projects `internal/server/api/spec/openapi.{yaml,json}`
+  from it. Handlers, the generated spec, and the auth enforcement all
+  come from the same table entry — mux registration and documented
+  contract cannot drift. When adding a route: add it to `Routes()`,
+  add the handler method on `*Server`, add a test, run `just generate`,
+  commit both the code and the regenerated spec. `just generate-check`
+  in CI fails if the committed spec is stale.
 - **Single binary.** Server, migrations, and (eventually) the embedded
   frontend all ship as one `wdw-fleet` executable. The binary is always
   usable standalone, but the primary deployment path is containerized
@@ -230,6 +241,7 @@ conversation. If deferring, say why before resolving.
 
 ## Further Reading
 
-- [api/openapi.yaml](api/openapi.yaml) — API contract (source of truth)
+- [internal/server/api/routes.go](internal/server/api/routes.go) — API route table (source of truth)
+- [internal/server/api/spec/openapi.yaml](internal/server/api/spec/openapi.yaml) — generated OpenAPI 3.1 contract (also served at `/openapi.yaml`)
 - [docs/design/](docs/design/) — FleetAware UI design handoff
 - [CLAUDE.md](CLAUDE.md) — Claude Code operator-specific notes

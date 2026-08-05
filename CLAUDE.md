@@ -33,14 +33,17 @@ migration against a fresh Postgres (`just dev-down && just dev-up`)
 to confirm the baseline is clean. Then apply your new migration and
 verify the `.down.sql` cleanly reverses it. Both paths must work.
 
-After schema changes, the OpenAPI spec (`api/openapi.yaml`) and the
-Go model types (`internal/model/`) usually need matching updates.
-Land them in the same commit or PR.
+After schema changes, the Go route table + DTO structs in
+`internal/server/api/` and the model types in `internal/model/`
+usually need matching updates. Run `just generate` and commit the
+regenerated spec in the same commit or PR.
 
 ## Design Source-of-Truth
 
-- **API surface**: `api/openapi.yaml`. Update the spec first, then
-  code.
+- **API surface**: `internal/server/api/routes.go` (Go route table).
+  The spec at `internal/server/api/spec/openapi.yaml` is generated —
+  never hand-edit it. Add or change routes in Go, run `just generate`,
+  commit both. `just generate-check` gates CI.
 - **Web UI**: [`docs/design/`](docs/design/) (FleetAware handoff).
   Don't invent tokens, sizes, or colors — extract from the handoff.
 

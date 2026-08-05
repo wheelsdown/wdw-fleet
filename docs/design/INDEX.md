@@ -17,8 +17,10 @@ layouts, and interaction semantics.
   (light + dark palettes)
 - [`tokens.json`](tokens.json) — Same values, JSON (for JS tooling)
 - [`api-additions.yaml`](api-additions.yaml) — OpenAPI fragment for
-  endpoints the UI assumes on top of `api/openapi.yaml`. Reconcile
-  with the existing spec before merging.
+  endpoints the UI assumes. These need to be reconciled into the Go
+  route table at `internal/server/api/routes.go` (spec is generated,
+  not hand-authored); use this fragment as a design reference for the
+  operations and DTO shapes the UI expects.
 
 ## How to use
 
