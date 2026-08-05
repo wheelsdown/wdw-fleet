@@ -32,8 +32,26 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: gofmt
+        run: |
+          fmt_out=$(gofmt -l .)
+          if [ -n "$fmt_out" ]; then
+            echo "The following files need gofmt:" >&2
+            echo "$fmt_out" >&2
+            exit 1
+          fi
+
+      - name: generate-check (openapigen drift gate)
+        run: |
+          go generate ./...
+          if ! git diff --quiet -- internal/server/api/spec; then
+            echo "openapi spec is out of date; run 'just generate' and commit"
+            git --no-pager diff -- internal/server/api/spec
+            exit 1
+          fi
+
       - name: Lint
-        uses: golangci-lint/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v6
         with:
           version: latest
 
